@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Balloon Pop Game</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Babel for JSX compilation in browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- ESM Import Map -->
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.344.0?deps=react@18.2.0"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useRef, useCallback } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { Play, RotateCcw, Volume2, Award, Zap, Download, BookOpen } from 'lucide-react';
+
+    // --- 学習データ ---
+    // 似ている音（清音、濁音、半濁音）のグループ
+    const STAGES = [
+      // 濁音・半濁音のおさらい
+      { target: 'ぱん', options: ['はん', 'ばん', 'ぱん'], note: 'Voiced or Half-voiced?' },
+      { target: 'からす', options: ['からす', 'がらす'], note: 'Voiced or Unvoiced?' },
+      
+      // 拗音（ちいさい ゃ・ゅ・ょ）
+      { target: 'きゃく', options: ['きゃく', 'きやく'], note: 'Contracted sound?' },
+      { target: 'びょういん', options: ['びよういん', 'びょういん'], note: 'Contracted sound?' },
+      { target: 'じゅう', options: ['じゆう', 'じゅう'], note: 'Contracted sound?' },
+      
+      // 促音（ちいさい っ）
+      { target: 'きって', options: ['きて', 'きって'], note: 'Double consonant?' },
+      { target: 'ぶっか', options: ['ぶか', 'ぶっか'], note: 'Double consonant?' },
+      { target: 'おっと', options: ['おと', 'おっと'], note: 'Double consonant?' },
+
+      // 長音（のばす音）
+      { target: 'ゆうき', options: ['ゆき', 'ゆうき'], note: 'Long vowel?' },
+      { target: 'おばあさん', options: ['おばさん', 'おばあさん'], note: 'Long vowel?' },
+    ];
+
+    const BALLOON_COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+
+    // ローマ字マッピングデータ
+    const ROMAJI_MAP = {
+      'はん': 'han', 'ばん': 'ban', 'ぱん': 'pan',
+      'からす': 'karasu', 'がらす': 'garasu',
+      'きゃく': 'kyaku', 'きやく': 'kiyaku',
+      'びよういん': 'biyooin', 'びょういん': 'byooin',
+      'じゆう': 'jiyuu', 'じゅう': 'juu',
+      'きて': 'kite', 'きって': 'kitte',
+      'ぶか': 'buka', 'ぶっか': 'bukka',
+      'おと': 'oto', 'おっと': 'otto',
+      'ゆき': 'yuki', 'ゆうき': 'yuuki',
+      'おばさん': 'obasan', 'おばあさん': 'obaasan'
+    };
+
+    // --- 効果音 (Web Audio API) ---
+    const playPopSound = (audioCtx) => {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.1);
+    };
+
+    const playErrorSound = (audioCtx) => {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.2);
+    };
+
+    const playStageClearSound = (audioCtx) => {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(600, audioCtx.currentTime + 0.1);
+      osc.frequency.setValueAtTime(800, audioCtx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.5);
+    };
+
+    // --- 単語の音声再生 (WAVファイル) ---
+    const playWordAudio = (kana) => {
+      const romaji = ROMAJI_MAP[kana];
+      if (!romaji) {
+        console.error(`Audio file name not found for: ${kana}`);
+        return;
+      }
+      
+      // 同一階層にあるWAVファイルを読み込む
+      const audio = new Audio(`./${romaji}.wav`);
+      audio.play().catch(e => {
+        console.warn(`Audio playback failed for ${romaji}.wav. (Make sure the file exists in the same directory):`, e);
+      });
+    };
+
+    function BalloonPopApp() {
+      const [gameState, setGameState] = useState('idle'); // 'idle', 'learning', 'preparing', 'playing', 'finished'
+      const [currentStageIndex, setCurrentStageIndex] = useState(0);
+      const [score, setScore] = useState(0);
+      const [correctCount, setCorrectCount] = useState(0);
+      const [balloons, setBalloons] = useState([]);
+      const [particles, setParticles] = useState([]);
+      const [userName, setUserName] = useState('');
+      
+      const audioCtxRef = useRef(null);
+      const GOALS_PER_STAGE = 3; // 次のステージに進むために必要な正解数
+
+      const currentStage = STAGES[currentStageIndex];
+
+      const initAudio = () => {
+        if (!audioCtxRef.current) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          audioCtxRef.current = new AudioContext();
+        }
+        if (audioCtxRef.current.state === 'suspended') {
+          audioCtxRef.current.resume();
+        }
+      };
+
+      const handleStartLearning = () => {
+        initAudio();
+        setGameState('learning');
+      };
+
+      const handleStartGame = () => {
+        setScore(0);
+        setCurrentStageIndex(0);
+        setCorrectCount(0);
+        setBalloons([]);
+        setGameState('preparing');
+      };
+
+      const startStage = () => {
+        setGameState('playing');
+      };
+
+      // 準備画面（Listen Carefully）に入ったときのオート再生
+      useEffect(() => {
+        if (gameState === 'preparing' && currentStage) {
+          const timer = setTimeout(() => {
+            playWordAudio(currentStage.target);
+          }, 500); // 画面が切り替わってから少し待って再生
+          return () => clearTimeout(timer);
+        }
+      }, [gameState, currentStage, currentStageIndex]);
+
+      // 風船の生成ループ
+      useEffect(() => {
+        if (gameState !== 'playing') return;
+
+        const interval = setInterval(() => {
+          const options = STAGES[currentStageIndex].options;
+          const newBalloon = {
+            id: Date.now() + Math.random(), // ユニークID
+            kana: options[Math.floor(Math.random() * options.length)], // グループ内からランダム
+            left: Math.random() * 80 + 10, // 10% 〜 90% の位置
+            color: BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)],
+            speed: Math.random() * 3 + 4, // 4秒 〜 7秒で上まで到達
+          };
+          setBalloons(prev => [...prev, newBalloon]);
+        }, 1200); // 1.2秒に1個生成
+
+        return () => clearInterval(interval);
+      }, [gameState, currentStageIndex]);
+
+      // 古い風船（画面外に出たもの）のクリーンアップ
+      useEffect(() => {
+        if (gameState !== 'playing') return;
+        const cleanup = setInterval(() => {
+          const now = Date.now();
+          // 生成から8秒以上経ったものは配列から削除
+          setBalloons(prev => prev.filter(b => now - b.id < 8000));
+          setParticles(prev => prev.filter(p => now - p.id < 1000)); // パーティクルは1秒で消す
+        }, 2000);
+        return () => clearInterval(cleanup);
+      }, [gameState]);
+
+      // プレイ中の自動音声再生 (4秒ごと)
+      useEffect(() => {
+        if (gameState !== 'playing') return;
+        const interval = setInterval(() => {
+          playWordAudio(STAGES[currentStageIndex].target);
+        }, 4000);
+        return () => clearInterval(interval);
+      }, [gameState, currentStageIndex]);
+
+      // 風船をタップした時の処理
+      const handlePop = (e, balloon) => {
+        if (gameState !== 'playing') return;
+        e.stopPropagation();
+
+        // クリック位置を取得してパーティクルを生成
+        const rect = e.target.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+
+        const isCorrect = balloon.kana === currentStage.target;
+
+        if (isCorrect) {
+          playPopSound(audioCtxRef.current);
+          setScore(s => s + 10);
+          
+          const newCount = correctCount + 1;
+          setCorrectCount(newCount);
+
+          // 破裂パーティクル
+          setParticles(prev => [...prev, { id: Date.now(), x, y, color: balloon.color, text: 'O' }]);
+
+          if (newCount >= GOALS_PER_STAGE) {
+            // ステージクリア
+            playStageClearSound(audioCtxRef.current);
+            setBalloons([]); // 画面の風船をリセット
+            if (currentStageIndex + 1 < STAGES.length) {
+              setCurrentStageIndex(prev => prev + 1);
+              setCorrectCount(0);
+              setGameState('preparing');
+            } else {
+              setGameState('finished');
+            }
+          }
+        } else {
+          // 不正解
+          playErrorSound(audioCtxRef.current);
+          setScore(s => Math.max(0, s - 5)); // 0点未満にはならない
+          setParticles(prev => [...prev, { id: Date.now(), x, y, color: '#475569', text: 'X' }]);
+        }
+
+        // タップされた風船を消す
+        setBalloons(prev => prev.filter(b => b.id !== balloon.id));
+      };
+
+      // 修了証ダウンロード機能
+      const downloadCertificate = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 800;
+        canvas.height = 600;
+        const ctx = canvas.getContext('2d');
+
+        // 背景を塗る
+        ctx.fillStyle = '#e0f2fe'; // sky-100
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 枠線を描く
+        ctx.strokeStyle = '#38bdf8'; // sky-400
+        ctx.lineWidth = 15;
+        ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+        ctx.strokeStyle = '#bae6fd'; // sky-200
+        ctx.lineWidth = 5;
+        ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80);
+
+        // テキストを描く
+        ctx.fillStyle = '#0284c7'; // sky-600
+        ctx.font = 'bold 50px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Certificate of Achievement', canvas.width / 2, 120);
+
+        ctx.fillStyle = '#475569'; // slate-600
+        ctx.font = '30px sans-serif';
+        ctx.fillText('This certifies that', canvas.width / 2, 220);
+
+        // ユーザー名
+        ctx.fillStyle = '#ec4899'; // pink-500
+        ctx.font = 'bold 60px sans-serif';
+        ctx.fillText(userName || 'Student', canvas.width / 2, 310);
+
+        ctx.fillStyle = '#475569';
+        ctx.font = '30px sans-serif';
+        ctx.fillText('has successfully cleared all stages in', canvas.width / 2, 400);
+        
+        ctx.fillStyle = '#0ea5e9'; // sky-500
+        ctx.font = 'bold 45px sans-serif';
+        ctx.fillText('Hiragana Balloon Pop!', canvas.width / 2, 460);
+
+        // スコア
+        ctx.fillStyle = '#f59e0b'; // amber-500
+        ctx.font = 'bold 35px sans-serif';
+        ctx.fillText(`Total Score: ${score}`, canvas.width / 2, 530);
+
+        // 日付
+        const date = new Date().toLocaleDateString();
+        ctx.fillStyle = '#64748b'; // slate-500
+        ctx.font = '24px sans-serif';
+        ctx.fillText(`Date: ${date}`, canvas.width / 2, 580);
+
+        // ダウンロードの実行
+        const url = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${userName || 'Student'}_BalloonPop_Certificate.png`;
+        a.click();
+      };
+
+      return (
+        <div className="min-h-screen bg-sky-100 text-slate-800 font-sans p-4 flex flex-col items-center overflow-hidden select-none touch-none">
+          <style dangerouslySetInnerHTML={{__html: `
+            @import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap');
+            .kyokasho-font { font-family: 'Klee One', serif; }
+            
+            @keyframes floatUp {
+              0% { bottom: -120px; transform: translateX(0px) rotate(-5deg); }
+              50% { transform: translateX(15px) rotate(5deg); }
+              100% { bottom: 120%; transform: translateX(-10px) rotate(-2deg); }
+            }
+            
+            @keyframes popFade {
+              0% { transform: scale(0.5); opacity: 1; }
+              100% { transform: scale(2); opacity: 0; }
+            }
+            .animate-pop { animation: popFade 0.4s ease-out forwards; }
+            
+            /* スクロールバーのカスタマイズ */
+            .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+            .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.5); border-radius: 10px; }
+            .custom-scrollbar::-webkit-scrollbar-thumb { background: #bae6fd; border-radius: 10px; }
+            .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #7dd3fc; }
+          `}} />
+
+          {/* ヘッダー */}
+          <div className="w-full max-w-4xl flex items-center justify-between mb-2 bg-white/80 p-3 md:p-4 rounded-2xl shadow-sm z-20 backdrop-blur-sm">
+            <h1 className="text-xl md:text-2xl font-bold tracking-tighter text-sky-600 flex items-center gap-2">
+              Balloon Pop
+            </h1>
+            <div className="flex items-center gap-4 font-bold">
+              <div className="text-slate-500">Score: <span className="text-sky-600 text-xl">{score}</span></div>
+              {(gameState === 'playing' || gameState === 'preparing') && (
+                <div className="text-slate-500 hidden md:block">
+                  Stage: <span className="text-pink-500 text-xl">{currentStageIndex + 1}/{STAGES.length}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {gameState === 'idle' && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-8 text-center z-20 animate-in fade-in duration-500">
+              <div className="relative">
+                <div className="w-32 h-40 bg-pink-500 rounded-[50%] flex items-center justify-center shadow-inner border-2 border-white/30 transform rotate-12">
+                  <span className="text-white text-6xl font-bold kyokasho-font drop-shadow-md">ば</span>
+                </div>
+                <div className="absolute -bottom-6 left-1/2 w-1 h-8 bg-gray-400 opacity-60 transform -translate-x-1/2"></div>
+              </div>
+              <h2 className="text-4xl font-extrabold text-sky-700">Listen & Pop!</h2>
+              <p className="text-slate-600 max-w-sm text-lg">
+                First, learn the differences in the Learning Room.<br/>Then, test your ears in the Balloon Pop game!
+              </p>
+              
+              <div className="flex flex-col items-center gap-4 w-full mt-4">
+                <input 
+                  type="text" 
+                  placeholder="Enter your name" 
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  className="w-full max-w-xs text-center text-lg p-3 bg-white text-slate-800 border-2 border-sky-300 rounded-xl focus:outline-none focus:border-sky-500 transition shadow-inner placeholder-slate-400"
+                />
+                <button 
+                  onClick={handleStartLearning}
+                  disabled={!userName.trim()}
+                  className={`flex items-center justify-center gap-3 text-white text-2xl font-bold py-4 px-8 rounded-full shadow-lg transform transition 
+                    ${!userName.trim() ? 'bg-slate-400 cursor-not-allowed' : 'bg-sky-500 hover:bg-sky-400 active:scale-95'}`}
+                >
+                  <BookOpen size={28} />
+                  Start Learning
+                </button>
+              </div>
+            </div>
+          )}
+
+          {gameState === 'learning' && (
+            <div className="flex-1 w-full max-w-4xl flex flex-col items-center z-20 animate-in fade-in zoom-in duration-300 h-full mt-2">
+              <div className="bg-white/95 p-6 rounded-3xl shadow-xl border-4 border-sky-200 w-full flex flex-col items-center gap-6 backdrop-blur-md h-full max-h-[85vh]">
+                <div className="text-center shrink-0">
+                  <h2 className="text-3xl md:text-4xl font-extrabold text-sky-700 mb-2 flex items-center justify-center gap-3">
+                    <BookOpen size={32} className="text-sky-500" />
+                    Learning Room
+                  </h2>
+                  <p className="text-slate-600">Listen and compare the sounds carefully before you play.</p>
+                </div>
+                
+                <div className="w-full overflow-y-auto pr-2 pb-4 flex-1 custom-scrollbar">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {STAGES.map((stage, i) => (
+                      <div key={i} className="bg-sky-50/50 p-4 rounded-2xl border-2 border-sky-100 hover:border-sky-300 transition shadow-sm">
+                        <p className="text-pink-500 font-bold text-xs uppercase tracking-wider mb-4 text-center">{stage.note}</p>
+                        <div className="flex flex-wrap gap-3 justify-center">
+                          {stage.options.map(opt => (
+                            <button 
+                              key={opt}
+                              onClick={() => playWordAudio(opt)}
+                              className="flex items-center gap-3 bg-white hover:bg-sky-100 text-sky-700 border border-sky-200 px-4 py-2 rounded-xl font-bold transition active:scale-95 shadow-sm"
+                            >
+                              <Volume2 size={24} className="text-sky-400 shrink-0" />
+                              <div className="flex flex-col items-start leading-tight">
+                                <span className="kyokasho-font text-xl md:text-2xl">{opt}</span>
+                                <span className="text-[10px] md:text-xs text-slate-400 font-sans tracking-widest">{ROMAJI_MAP[opt]}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <button 
+                  onClick={handleStartGame}
+                  className="w-full max-w-md flex items-center justify-center gap-3 bg-emerald-500 hover:bg-emerald-400 text-white text-xl md:text-2xl font-bold py-4 px-6 rounded-full shadow-lg transform transition active:scale-95 shrink-0"
+                >
+                  <Play size={28} />
+                  I'm Ready! Start Game
+                </button>
+              </div>
+            </div>
+          )}
+
+          {gameState === 'preparing' && currentStage && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-6 text-center z-20 animate-in zoom-in duration-300 w-full max-w-md">
+              <div className="bg-white p-8 rounded-3xl shadow-xl border-4 border-sky-200 w-full flex flex-col items-center gap-6">
+                <div className="text-slate-500 font-bold uppercase tracking-widest">Stage {currentStageIndex + 1}</div>
+                {currentStage.note && (
+                   <p className="text-sm text-pink-500 font-bold bg-pink-100 px-4 py-2 rounded-full">{currentStage.note}</p>
+                )}
+                
+                <h3 className="text-2xl font-extrabold text-slate-700">Listen Carefully</h3>
+                
+                <button 
+                  onClick={() => playWordAudio(currentStage.target)}
+                  className="w-32 h-32 bg-sky-100 hover:bg-sky-200 rounded-full flex items-center justify-center text-sky-500 shadow-inner transition active:scale-95"
+                >
+                  <Volume2 size={64} />
+                </button>
+                <p className="text-slate-500">Tap to hear the target sound</p>
+
+                <button 
+                  onClick={startStage}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white text-xl font-bold py-4 px-6 rounded-2xl shadow-lg transform transition active:scale-95 mt-4"
+                >
+                  <Play size={24} />
+                  Ready! Start Popping
+                </button>
+              </div>
+            </div>
+          )}
+
+          {gameState === 'playing' && currentStage && (
+            <div className="flex-1 w-full relative z-10 flex flex-col items-center">
+              
+              {/* お題表示 (コンパクト版) */}
+              <div className="bg-white/90 p-3 md:p-4 rounded-full shadow-md border-2 border-sky-200 text-center z-20 mt-2 flex items-center justify-between gap-4 w-full max-w-md backdrop-blur-sm">
+                <button 
+                  onClick={() => playWordAudio(currentStage.target)}
+                  className="w-12 h-12 md:w-14 md:h-14 bg-sky-100 hover:bg-sky-200 rounded-full flex items-center justify-center text-sky-500 shadow-inner transition active:scale-90 shrink-0"
+                  title="Listen again"
+                >
+                  <Volume2 size={24} />
+                </button>
+                
+                <div className="flex-1 flex flex-col gap-1">
+                   {currentStage.note && (
+                     <p className="text-[10px] md:text-xs text-pink-500 font-bold uppercase tracking-wider">{currentStage.note}</p>
+                   )}
+                   <div className="w-full bg-slate-200 h-3 md:h-4 rounded-full overflow-hidden">
+                     <div 
+                       className="bg-emerald-400 h-full transition-all duration-300"
+                       style={{ width: `${(correctCount / GOALS_PER_STAGE) * 100}%` }}
+                     ></div>
+                   </div>
+                </div>
+                
+                <div className="text-xs md:text-sm text-slate-500 font-bold shrink-0 whitespace-nowrap">
+                  {correctCount} / {GOALS_PER_STAGE}
+                </div>
+              </div>
+
+              {/* 風船の描画 */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                {balloons.map(b => (
+                  <div 
+                    key={b.id}
+                    className="absolute flex flex-col items-center pointer-events-auto cursor-pointer"
+                    style={{ 
+                      left: `${b.left}%`, 
+                      animation: `floatUp ${b.speed}s ease-in forwards` 
+                    }}
+                    onPointerDown={(e) => handlePop(e, b)}
+                  >
+                    {/* 風船本体 */}
+                    <div 
+                      className="px-4 min-w-[5rem] h-24 md:min-w-[6rem] md:h-28 rounded-[50%] flex items-center justify-center shadow-md border-2 border-white/30 transform transition hover:scale-105"
+                      style={{ backgroundColor: b.color }}
+                    >
+                      <span className={`${b.kana.length >= 4 ? 'text-2xl md:text-3xl' : b.kana.length >= 3 ? 'text-3xl md:text-4xl' : 'text-4xl md:text-5xl'} text-white font-bold kyokasho-font drop-shadow-md whitespace-nowrap`}>
+                        {b.kana}
+                      </span>
+                      {/* 光沢ハイライト */}
+                      <div className="absolute top-2 left-1/4 w-4 h-6 bg-white/30 rounded-full transform rotate-[-20deg]"></div>
+                    </div>
+                    {/* 紐 */}
+                    <div className="w-0.5 h-12 bg-slate-400 opacity-60"></div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 破裂パーティクル */}
+              {particles.map(p => (
+                <div 
+                  key={p.id}
+                  className="fixed text-4xl font-black pointer-events-none animate-pop z-50 drop-shadow-lg"
+                  style={{ left: p.x, top: p.y, color: p.color, transform: 'translate(-50%, -50%)' }}
+                >
+                  {p.text}
+                </div>
+              ))}
+
+            </div>
+          )}
+
+          {gameState === 'finished' && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-8 text-center bg-white p-12 rounded-3xl border-4 border-sky-200 shadow-2xl z-20">
+              <Award size={100} className="text-sky-500 drop-shadow-lg" />
+              <h2 className="text-4xl md:text-5xl font-extrabold text-slate-700">All Stages Clear!</h2>
+              <p className="text-slate-500 text-2xl font-bold">Total Score: <span className="text-sky-600 text-4xl">{score}</span></p>
+              <p className="text-slate-600 max-w-sm">
+                Great job, <span className="font-bold text-pink-500">{userName}</span>!<br/>You can now clearly hear the difference between clear and voiced sounds!
+              </p>
+              
+              <div className="flex flex-col md:flex-row gap-4 mt-4 w-full max-w-lg justify-center">
+                <button 
+                  onClick={downloadCertificate}
+                  className="flex items-center justify-center gap-2 bg-pink-500 hover:bg-pink-400 text-white text-lg font-bold py-3 px-6 rounded-full shadow-lg transform transition active:scale-95 flex-1"
+                >
+                  <Download size={20} />
+                  Download
+                </button>
+                <button 
+                  onClick={handleStartGame}
+                  className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white text-lg font-bold py-3 px-6 rounded-full shadow-lg transform transition active:scale-95 flex-1"
+                >
+                  <RotateCcw size={20} />
+                  Play Again
+                </button>
+                <button 
+                  onClick={handleStartLearning}
+                  className="flex items-center justify-center gap-2 bg-sky-500 hover:bg-sky-400 text-white text-lg font-bold py-3 px-6 rounded-full shadow-lg transform transition active:scale-95 flex-1"
+                >
+                  <BookOpen size={20} />
+                  Study
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<BalloonPopApp />);
+  </script>
+</body>
+</html>
