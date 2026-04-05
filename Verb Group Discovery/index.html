@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>動詞グループ・ディスカバリー</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- html2canvas (画像ダウンロード用) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <style>
+        body { font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; background-color: #f0fdf4; touch-action: manipulation; }
+        .slide-up { animation: slideUp 0.3s ease-out forwards; }
+        .pop-in { animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.5) rotate(-10deg); }
+            to { opacity: 1; transform: scale(1) rotate(0deg); }
+        }
+        /* 母音のハイライトカラー */
+        .highlight-e { color: #ec4899; font-weight: bold; } /* ピンク: IIグループの特徴 */
+        .highlight-i { color: #3b82f6; font-weight: bold; } /* 青: Iグループの特徴 */
+        .highlight-exception { color: #ef4444; font-weight: bold; } /* 赤: 例外 */
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // 配列をシャッフルする関数
+        const shuffleArray = (array) => {
+            const newArray = [...array];
+            for (let i = newArray.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+            }
+            return newArray;
+        };
+
+        // グループ番号をローマ数字に変換するヘルパー関数
+        const getRomanGroup = (g) => g === 1 ? 'Ⅰ' : g === 2 ? 'Ⅱ' : 'Ⅲ';
+
+        // 学習を進めるためのカリキュラム順のデータ
+        const VERB_DATA = [
+            { word: "たべます", english: "to eat", romaji: "ta-be-masu", group: 2, type: "e_masu", desc: "If the sound before 'masu' is an 'e' sound (like 'be'), it's always Group Ⅱ!" },
+            { word: "のみます", english: "to drink", romaji: "no-mi-masu", group: 1, type: "i_masu", desc: "If the sound before 'masu' is an 'i' sound (like 'mi'), it's usually Group Ⅰ!" },
+            { word: "ねます", english: "to sleep", romaji: "ne-masu", group: 2, type: "e_masu", desc: "'ne' is an 'e' sound -> Group Ⅱ!" },
+            { word: "かきます", english: "to write", romaji: "ka-ki-masu", group: 1, type: "i_masu", desc: "'ki' is an 'i' sound -> Group Ⅰ!" },
+            { word: "はたらきます", english: "to work", romaji: "ha-ta-ra-ki-masu", group: 1, type: "i_masu", desc: "'ki' is an 'i' sound -> Group Ⅰ!" },
+            { word: "あけます", english: "to open", romaji: "a-ke-masu", group: 2, type: "e_masu", desc: "'ke' is an 'e' sound -> Group Ⅱ!" },
+            { word: "やすみます", english: "to rest", romaji: "ya-su-mi-masu", group: 1, type: "i_masu", desc: "'mi' is an 'i' sound -> Group Ⅰ!" },
+            { word: "きます", english: "to come", romaji: "ki-masu", group: 3, type: "special", desc: "[Special Rule] 'shimasu' and 'kimasu' are always Group Ⅲ!" },
+            { word: "べんきょうします", english: "to study", romaji: "ben-kyou-shi-masu", group: 3, type: "special", desc: "Noun + 'shimasu' -> Group Ⅲ!" },
+            { word: "みます", english: "to see", romaji: "mi-masu", group: 2, type: "one_syl", desc: "Only one syllable before 'masu' (mi) -> Group Ⅱ!" },
+            { word: "およぎます", english: "to swim", romaji: "o-yo-gi-masu", group: 1, type: "i_masu", desc: "'gi' is an 'i' sound -> Group Ⅰ!" },
+            { word: "しめます", english: "to close", romaji: "shi-me-masu", group: 2, type: "e_masu", desc: "'me' is an 'e' sound -> Group Ⅱ!" },
+            { word: "とります", english: "to take", romaji: "to-ri-masu", group: 1, type: "i_masu", desc: "'ri' is an 'i' sound -> Group Ⅰ!" },
+            { word: "おしえます", english: "to teach", romaji: "o-shi-e-masu", group: 2, type: "e_masu", desc: "'e' is an 'e' sound -> Group Ⅱ!" },
+            { word: "わかります", english: "to understand", romaji: "wa-ka-ri-masu", group: 1, type: "i_masu", desc: "'ri' is an 'i' sound -> Group Ⅰ!" },
+            { word: "まちます", english: "to wait", romaji: "ma-chi-masu", group: 1, type: "i_masu", desc: "'chi' is an 'i' sound -> Group Ⅰ!" },
+            { word: "います", english: "to exist (living)", romaji: "i-masu", group: 2, type: "one_syl", desc: "One syllable before 'masu' (i) -> Group Ⅱ!" },
+            { word: "コピーします", english: "to copy", romaji: "ko-pii-shi-masu", group: 3, type: "special", desc: "Loanword + 'shimasu' -> Group Ⅲ!" },
+            { word: "おきます", english: "to wake up", romaji: "o-ki-masu", group: 2, type: "exception_i", desc: "[Exception!] 'ki' is an 'i' sound, but this verb is Group Ⅱ!" },
+            { word: "きります", english: "to cut", romaji: "ki-ri-masu", group: 1, type: "i_masu", desc: "'ri' is an 'i' sound -> Group Ⅰ. (Dict form 'kiru' looks like GⅡ, but it's GⅠ!)" },
+            { word: "かります", english: "to borrow", romaji: "ka-ri-masu", group: 2, type: "exception_i", desc: "[Exception!] 'ri' is an 'i' sound, but 'karimasu' is Group Ⅱ!" },
+            { word: "かします", english: "to lend", romaji: "ka-shi-masu", group: 1, type: "i_masu", desc: "'shi' is an 'i' sound -> Group Ⅰ!" },
+            { word: "できます", english: "can do", romaji: "de-ki-masu", group: 2, type: "exception_i", desc: "[Exception!] 'ki' is an 'i' sound, but 'dekimasu' is Group Ⅱ!" },
+            { word: "はなします", english: "to speak", romaji: "ha-na-shi-masu", group: 1, type: "i_masu", desc: "'shi' is an 'i' sound -> Group Ⅰ!" },
+            { word: "でます", english: "to leave / exit", romaji: "de-masu", group: 2, type: "e_masu", desc: "'de' is an 'e' sound -> Group Ⅱ!" },
+            { word: "あいます", english: "to meet", romaji: "a-i-masu", group: 1, type: "i_masu", desc: "'i' is an 'i' sound -> Group Ⅰ!" },
+            { word: "かいます", english: "to buy", romaji: "ka-i-masu", group: 1, type: "i_masu", desc: "'i' is an 'i' sound -> Group Ⅰ!" },
+            { word: "もらいます", english: "to receive", romaji: "mo-ra-i-masu", group: 1, type: "i_masu", desc: "'i' is an 'i' sound -> Group Ⅰ!" },
+            { word: "あげます", english: "to give", romaji: "a-ge-masu", group: 2, type: "e_masu", desc: "'ge' is an 'e' sound -> Group Ⅱ!" },
+            { word: "みせます", english: "to show", romaji: "mi-se-masu", group: 2, type: "e_masu", desc: "'se' is an 'e' sound -> Group Ⅱ!" },
+            { word: "つかれます", english: "to get tired", romaji: "tsu-ka-re-masu", group: 2, type: "e_masu", desc: "'re' is an 'e' sound -> Group Ⅱ!" },
+            { word: "とめます", english: "to stop", romaji: "to-me-masu", group: 2, type: "e_masu", desc: "'me' is an 'e' sound -> Group Ⅱ!" },
+            { word: "かいものします", english: "to shop", romaji: "ka-i-mo-no-shi-masu", group: 3, type: "special", desc: "Noun + 'shimasu' -> Group Ⅲ!" },
+            { word: "もってきます", english: "to bring", romaji: "mot-te-ki-masu", group: 3, type: "special", desc: "Compound with 'kimasu' -> Group Ⅲ!" },
+            { word: "つれてきます", english: "to bring (a person)", romaji: "tsu-re-te-ki-masu", group: 3, type: "special", desc: "Compound with 'kimasu' -> Group Ⅲ!" },
+        ];
+
+        // 正解時の効果音を生成・再生する関数 (Web Audio API)
+        const playCorrectSound = () => {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                
+                const ctx = new AudioContext();
+                const osc = ctx.createOscillator();
+                const gainNode = ctx.createGain();
+
+                osc.type = 'sine'; // 丸みのある音色
+                osc.connect(gainNode);
+                gainNode.connect(ctx.destination);
+
+                // 「ピポッ」という軽快な音の周波数設定
+                osc.frequency.setValueAtTime(880, ctx.currentTime); // 音の入り (A5)
+                osc.frequency.setValueAtTime(1108.73, ctx.currentTime + 0.1); // 少し上がる (C#6)
+
+                // 音量の減衰（フェードアウト）設定
+                gainNode.gain.setValueAtTime(0, ctx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.3);
+            } catch (e) {
+                console.log("Audio playback not supported or blocked");
+            }
+        };
+
+        const App = () => {
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [gameState, setGameState] = useState("playing"); // 'playing', 'answered', 'finished'
+            const [selectedGroup, setSelectedGroup] = useState(null);
+            const [score, setScore] = useState(0);
+            
+            // ゲーム性アップのための追加ステート
+            const [combo, setCombo] = useState(0);
+            const [maxCombo, setMaxCombo] = useState(0);
+            
+            // 画像ダウンロード用の追加ステートとRef
+            const [playerName, setPlayerName] = useState("");
+            const [isGeneratingImg, setIsGeneratingImg] = useState(false);
+            const resultCardRef = useRef(null);
+
+            // 出題順をランダム化した状態を持つ
+            const [questions, setQuestions] = useState(() => shuffleArray(VERB_DATA));
+
+            const currentVerb = questions[currentIndex];
+
+            const handleGuess = (group) => {
+                if (gameState !== "playing") return;
+                
+                setSelectedGroup(group);
+                if (group === currentVerb.group) {
+                    playCorrectSound(); // 正解時に音を鳴らす
+                    setScore(score + 1);
+                    setCombo(prev => {
+                        const newCombo = prev + 1;
+                        if (newCombo > maxCombo) setMaxCombo(newCombo);
+                        return newCombo;
+                    });
+                } else {
+                    setCombo(0); // 間違えたらコンボリセット
+                }
+                setGameState("answered");
+            };
+
+            const handleNext = () => {
+                if (currentIndex < questions.length - 1) {
+                    setCurrentIndex(currentIndex + 1);
+                    setGameState("playing");
+                    setSelectedGroup(null);
+                } else {
+                    setGameState("finished");
+                }
+            };
+
+            const resetGame = () => {
+                setCurrentIndex(0);
+                setScore(0);
+                setCombo(0);
+                setMaxCombo(0);
+                setGameState("playing");
+                setSelectedGroup(null);
+                setQuestions(shuffleArray(VERB_DATA)); // もう一度プレイする際に再シャッフル
+                // 名前は引き継ぐ（何度もプレイしやすくするためリセットしない）
+            };
+
+            // 画像ダウンロード関数
+            const downloadImage = async () => {
+                if (!resultCardRef.current || isGeneratingImg) return;
+                setIsGeneratingImg(true);
+
+                try {
+                    // html2canvasでDOMを画像化
+                    const canvas = await window.html2canvas(resultCardRef.current, {
+                        scale: 2, // 高解像度で出力
+                        backgroundColor: "#ffffff",
+                        logging: false
+                    });
+                    
+                    const image = canvas.toDataURL("image/png");
+                    const safeName = playerName.trim() || "Guest";
+                    
+                    // ダミーのリンクを作ってダウンロードを発火
+                    const link = document.createElement("a");
+                    link.download = `Verb_Master_Result_${safeName}.png`;
+                    link.href = image;
+                    link.click();
+                } catch (error) {
+                    console.error("Image generation failed:", error);
+                } finally {
+                    setIsGeneratingImg(false);
+                }
+            };
+
+            // ルールを視覚的にハイライトする関数
+            const renderHighlightedRomaji = (verb) => {
+                const parts = verb.romaji.split('-');
+                const masu = parts.pop(); // 'masu'
+                const beforeMasu = parts.pop() || ""; // 'masu'の前の音
+
+                if (verb.type === "special") {
+                    return <span className="text-2xl font-bold tracking-widest text-purple-600">{verb.romaji}</span>;
+                }
+                
+                const vowel = beforeMasu.slice(-1);
+                const cons = beforeMasu.slice(0, -1);
+                let highlightClass = "";
+
+                if (verb.type === "e_masu") highlightClass = "highlight-e";
+                else if (verb.type === "i_masu") highlightClass = "highlight-i";
+                else if (verb.type === "one_syl") highlightClass = "highlight-e"; 
+                else if (verb.type === "exception_i") highlightClass = "highlight-exception";
+
+                return (
+                    <span className="text-2xl font-bold tracking-widest text-gray-400">
+                        {parts.length > 0 ? parts.join('-') + '-' : ''}
+                        {cons}<span className={`${highlightClass} text-3xl`}>{vowel}</span>-masu
+                    </span>
+                );
+            };
+
+            if (gameState === "finished") {
+                // スコアに応じたランク判定
+                let rank = "C";
+                let rankColor = "text-gray-500";
+                let rankMsg = "Keep practicing! You'll get the hang of it.";
+                
+                if (score === questions.length) {
+                    rank = "S"; rankColor = "text-yellow-500"; rankMsg = "Perfect! You are a Verb Master! 👑";
+                } else if (score >= questions.length * 0.9) {
+                    rank = "A"; rankColor = "text-red-500"; rankMsg = "Amazing! Almost perfect! 🔥";
+                } else if (score >= questions.length * 0.7) {
+                    rank = "B"; rankColor = "text-blue-500"; rankMsg = "Great job! You know the basics well. 👍";
+                }
+
+                return (
+                    <div className="min-h-screen flex flex-col items-center justify-center p-4">
+                        
+                        {/* キャプチャ対象エリア (idやrefで指定) */}
+                        <div ref={resultCardRef} className="bg-white p-8 rounded-2xl shadow-xl text-center max-w-md w-full slide-up relative overflow-hidden mb-4">
+                            <h2 className="text-xl font-bold text-gray-600 mb-4">Results</h2>
+                            
+                            {/* 名前入力フィールド */}
+                            <div className="mb-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
+                                <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Player Name</label>
+                                <input 
+                                    type="text" 
+                                    maxLength="15"
+                                    placeholder="Enter your name" 
+                                    value={playerName}
+                                    onChange={(e) => setPlayerName(e.target.value)}
+                                    className="w-full text-center text-2xl font-black text-gray-800 bg-transparent border-none focus:outline-none focus:ring-0 placeholder-gray-300"
+                                />
+                            </div>
+
+                            <div className="my-6">
+                                <div className={`text-7xl font-black ${rankColor} pop-in drop-shadow-md mb-2`}>
+                                    Rank {rank}
+                                </div>
+                                <p className="font-bold text-gray-700">{rankMsg}</p>
+                            </div>
+
+                            <div className="bg-green-50 p-4 rounded-lg text-left mb-6 text-sm text-green-800">
+                                <p className="font-bold mb-2">[Rules Discovered]</p>
+                                <ul className="list-disc pl-5 space-y-1">
+                                    <li>"e" sound + masu = Group Ⅱ</li>
+                                    <li>"i" sound + masu = Usually Group Ⅰ</li>
+                                    <li>"shimasu", "kimasu" = Group Ⅲ</li>
+                                    <li>1 syllable + masu (e.g. mi-masu) = Often Group Ⅱ</li>
+                                    <li>*There are exceptions like "okimasu" (Group Ⅱ)!</li>
+                                </ul>
+                            </div>
+                            
+                            {/* 画像出力時のウォーターマーク的な表示 */}
+                            <div className="text-xs text-gray-300 font-bold mt-2">
+                                Generated by Verb Group Discovery App
+                            </div>
+                        </div>
+
+                        {/* 操作ボタンエリア (画像には含まれない) */}
+                        <div className="max-w-md w-full flex flex-col gap-3 slide-up">
+                            <button 
+                                onClick={downloadImage} 
+                                disabled={isGeneratingImg}
+                                className={`w-full text-white font-bold py-4 rounded-xl transition-colors shadow-[0_4px_0_0_rgba(29,78,216,1)] active:shadow-none active:translate-y-1 text-lg flex justify-center items-center gap-2
+                                    ${isGeneratingImg ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`}
+                            >
+                                {isGeneratingImg ? (
+                                    "Generating..."
+                                ) : (
+                                    <>
+                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                        Save Result as PNG
+                                    </>
+                                )}
+                            </button>
+                            <button 
+                                onClick={resetGame} 
+                                className="w-full bg-green-500 text-white font-bold py-4 rounded-xl hover:bg-green-600 transition-colors shadow-[0_4px_0_0_rgba(21,128,61,1)] active:shadow-none active:translate-y-1 text-lg"
+                            >
+                                Play Again
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            const isCorrect = selectedGroup === currentVerb.group;
+
+            return (
+                <div className="min-h-screen flex flex-col items-center pt-8 md:pt-16 p-4 max-w-lg mx-auto">
+                    {/* ヘッダー・プログレス */}
+                    <div className="w-full flex justify-between items-center mb-6 px-2">
+                        <h1 className="text-xl font-bold text-green-800">Verb Group Discovery</h1>
+                        <span className="text-sm font-bold bg-green-200 text-green-800 py-1 px-3 rounded-full">
+                            {currentIndex + 1} / {questions.length}
+                        </span>
+                    </div>
+
+                    {/* メインの単語カード */}
+                    <div className="w-full bg-white rounded-3xl shadow-lg p-8 text-center mb-8 relative">
+                        {/* コンボ表示バッジ */}
+                        {combo > 1 && (
+                            <div key={combo} className="absolute -top-4 -right-4 bg-orange-500 text-white font-black px-4 py-2 rounded-full pop-in shadow-lg border-2 border-white transform rotate-12 z-10">
+                                {combo} COMBO! 🔥
+                            </div>
+                        )}
+
+                        <p className="text-gray-500 font-bold mb-2 text-lg">{currentVerb.english}</p>
+                        <h2 className="text-5xl md:text-6xl font-black text-gray-800 mb-4">{currentVerb.word}</h2>
+                        
+                        {/* 答え合わせ中のハイライト表示 */}
+                        {gameState === "answered" && (
+                            <div className="slide-up bg-gray-50 py-3 rounded-xl border border-gray-100">
+                                {renderHighlightedRomaji(currentVerb)}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* アクションエリア（選択肢 or 解説） */}
+                    <div className="w-full h-64"> 
+                        {gameState === "playing" ? (
+                            <div className="flex flex-col gap-3">
+                                <p className="text-center text-gray-600 font-bold mb-2">Which Group?</p>
+                                <div className="flex justify-between gap-2">
+                                    {[1, 2, 3].map((g) => (
+                                        <button 
+                                            key={g}
+                                            onClick={() => handleGuess(g)}
+                                            className={`flex-1 py-6 rounded-2xl text-2xl font-black shadow-[0_4px_0_0] active:shadow-none active:translate-y-1 transition-all
+                                                ${g === 1 ? 'bg-blue-100 text-blue-700 shadow-blue-300 border-2 border-blue-200' : 
+                                                  g === 2 ? 'bg-pink-100 text-pink-700 shadow-pink-300 border-2 border-pink-200' : 
+                                                  'bg-purple-100 text-purple-700 shadow-purple-300 border-2 border-purple-200'}`}
+                                        >
+                                            {getRomanGroup(g)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="slide-up w-full">
+                                <div className={`p-5 rounded-2xl mb-4 text-center border-2 ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                    <h3 className={`text-2xl font-black mb-2 ${isCorrect ? 'text-green-600' : 'text-red-500'}`}>
+                                        {isCorrect ? 'Correct! 🎉' : `Oops! Group ${getRomanGroup(currentVerb.group)} is correct.`}
+                                    </h3>
+                                    <p className="text-gray-700 font-bold">{currentVerb.desc}</p>
+                                </div>
+                                <button 
+                                    onClick={handleNext}
+                                    className="w-full bg-gray-800 text-white font-bold py-4 rounded-xl text-lg hover:bg-gray-700 transition-colors shadow-[0_4px_0_0_rgba(0,0,0,0.8)] active:shadow-none active:translate-y-1"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
