@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slay the Te-Form</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- html2canvas (画像ダウンロード用) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap');
+        .kyokasho-font { font-family: 'Klee One', serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-12px) rotate(-1deg); }
+            75% { transform: translateX(12px) rotate(1deg); }
+        }
+        .animate-shake { animation: shake 0.15s ease-in-out infinite; }
+        
+        @keyframes card-draw {
+            0% { transform: translateY(200%) scale(0.5); opacity: 0; }
+            100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        .animate-card-draw {
+            animation: card-draw 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        body {
+            background-color: black;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+        // --- Lucide Icon Component Helper ---
+        const Icon = ({ name, size = 24, className = "", fill = "none" }) => {
+            const iconData = useMemo(() => {
+                if (!window.lucide || !lucide.icons) return null;
+                const key = name.charAt(0).toLowerCase() + name.slice(1);
+                return lucide.icons[key] || lucide.icons[name] || lucide.icons[name.toLowerCase()];
+            }, [name]);
+
+            if (!iconData) return <span className={className} style={{ width: size, height: size, display: 'inline-block' }} />;
+
+            return (
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width={size}
+                    height={size}
+                    viewBox="0 0 24 24"
+                    fill={fill}
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={className}
+                    dangerouslySetInnerHTML={{
+                        __html: iconData.map(([tag, attrs]) => {
+                            const attrStr = Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(" ");
+                            return `<${tag} ${attrStr} />`;
+                        }).join("")
+                    }}
+                />
+            );
+        };
+
+        // --- Data Definitions ---
+        const WORD_DB = [
+            // Group 2
+            { masu: 'たべます', word: ['たべ', 'て'], tags: ['group2'] },
+            { masu: 'みます', word: ['み', 'て'], tags: ['group2'] },
+            { masu: 'います', word: ['い', 'て'], tags: ['group2'] },
+            { masu: 'かります(例外)', word: ['かり', 'て'], tags: ['group2'] },
+            { masu: 'おきます', word: ['おき', 'て'], tags: ['group2'] },
+            { masu: 'ねます', word: ['ね', 'て'], tags: ['group2'] },
+            { masu: 'あけます', word: ['あけ', 'て'], tags: ['group2'] },
+            { masu: 'しめます', word: ['しめ', 'て'], tags: ['group2'] },
+            { masu: 'おしえます', word: ['おしえ', 'て'], tags: ['group2'] },
+
+            // Group 3
+            { masu: 'します', word: ['し', 'て'], tags: ['group3'] },
+            { masu: 'コピーします', word: ['コピーし', 'て'], tags: ['group3'] },
+            { masu: 'きます(来)', word: ['き', 'て'], tags: ['group3'] },
+            { masu: 'もってきます', word: ['もってき', 'て'], tags: ['group3'] },
+            { masu: 'つれてきます', word: ['つれてき', 'て'], tags: ['group3'] },
+            { masu: 'べんきょうします', word: ['べんきょうし', 'て'], tags: ['group3'] },
+
+            // Group 1
+            { masu: 'かいます', word: ['か', 'って'], tags: ['group1'] },
+            { masu: 'まちます', word: ['ま', 'って'], tags: ['group1'] },
+            { masu: 'もちます', word: ['も', 'って'], tags: ['group1'] },
+            { masu: 'あいます', word: ['あ', 'って'], tags: ['group1'] },
+            { masu: 'いきます(Exception)', word: ['い', 'って'], tags: ['group1'] },
+            { masu: 'とります', word: ['と', 'って'], tags: ['group1'] },
+            { masu: 'わかります', word: ['わか', 'って'], tags: ['group1'] },
+            { masu: 'かえります', word: ['かえ', 'って'], tags: ['group1'] },
+
+            { masu: 'のみます', word: ['の', 'んで'], tags: ['group1'] },
+            { masu: 'よみます', word: ['よ', 'んで'], tags: ['group1'] },
+            { masu: 'あそびます', word: ['あそ', 'んで'], tags: ['group1'] },
+            { masu: 'やすみます', word: ['やす', 'んで'], tags: ['group1'] },
+            { masu: 'しにます', word: ['し', 'んで'], tags: ['group1'] },
+
+            { masu: 'かきます', word: ['か', 'いて'], tags: ['group1'] },
+            { masu: 'ききます', word: ['き', 'いて'], tags: ['group1'] },
+            { masu: 'はたらきます', word: ['はたら', 'いて'], tags: ['group1'] },
+            { masu: 'およぎます', word: ['およ', 'いで'], tags: ['group1'] },
+            { masu: 'いそぎます', word: ['いそ', 'いで'], tags: ['group1'] },
+
+            { masu: 'はなします', word: ['はな', 'して'], tags: ['group1'] },
+            { masu: 'かします', word: ['か', 'して'], tags: ['group1'] },
+            { masu: 'だします', word: ['だ', 'して'], tags: ['group1'] },
+            { masu: 'けします', word: ['け', 'して'], tags: ['group1'] },
+        ];
+        
+        const ALL_STEMS = [...new Set(WORD_DB.map(w => w.word[0]))];
+        const ALL_SUFFIXES = ['て', 'して', 'って', 'んで', 'いて', 'いで'];
+
+        // Enemy Types (Abstracted Map Nodes)
+        const ENEMY_TYPES = {
+            'normal_g2': { name: 'Slime', icon: 'Ghost', type: 'normal', color: 'text-green-500', tags: ['group2'], points: 100 },
+            'normal_g3': { name: 'Bat', icon: 'Bug', type: 'normal', color: 'text-blue-400', tags: ['group3'], points: 100 },
+            'elite_g1': { name: 'Demon', icon: 'Flame', type: 'elite', color: 'text-red-500', tags: ['group1'], points: 300 },
+            'boss': { name: 'Te-Form Lord', icon: 'Skull', type: 'boss', color: 'text-purple-600', tags: ['group1', 'group2', 'group3'], points: 1000 }
+        };
+
+        const CHARACTERS = [
+            { id: 'samurai', name: 'さむらい', image: './samurai.png', desc: 'Samurai' },
+            { id: 'hiro', name: 'ころしや', image: './hiro.png', desc: 'Assassin' },
+            { id: 'robo', name: 'ロボット', image: './robo.png', desc: 'Robot' }
+        ];
+
+        const isSuffixCard = (card) => ALL_SUFFIXES.includes(card);
+
+        // --- Utility ---
+        const getMaskedMasu = (masuWord) => {
+            const base = masuWord.split('(')[0].replace('ます', '');
+            const count = base.replace(/[ゃゅょー]/g, '').length;
+            return '〇'.repeat(count) + 'ます';
+        };
+
+        // 動詞の解説を生成する関数
+        const getExplanation = (wordObj) => {
+            if (!wordObj) return "";
+            if (wordObj.tags.includes('group2')) {
+                if (wordObj.masu.includes('かります')) return "Group Ⅱ (Exception): 'karimasu' belongs to Group Ⅱ.";
+                return "Group Ⅱ: Just drop 'masu' and add 'te'.";
+            }
+            if (wordObj.tags.includes('group3')) {
+                if (wordObj.masu.includes('きます')) return "Group Ⅲ: 'kimasu' and its compounds become '~kite'.";
+                return "Group Ⅲ: 'shimasu' and its compounds become '~shite'.";
+            }
+            if (wordObj.tags.includes('group1')) {
+                if (wordObj.masu.includes('いきます')) return "Group Ⅰ (Exception): 'ikimasu' becomes 'itte'.";
+                const suffix = wordObj.word[1];
+                if (suffix === 'って') return "Group Ⅰ: Sound before 'masu' is 'i', 'chi', or 'ri' ➡ Drop and add 'tte'.";
+                if (suffix === 'んで') return "Group Ⅰ: Sound before 'masu' is 'mi', 'bi', or 'ni' ➡ Drop and add 'nde'.";
+                if (suffix === 'いて') return "Group Ⅰ: Sound before 'masu' is 'ki' ➡ Drop and add 'ite'.";
+                if (suffix === 'いで') return "Group Ⅰ: Sound before 'masu' is 'gi' ➡ Drop and add 'ide'.";
+                if (suffix === 'して') return "Group Ⅰ: Sound before 'masu' is 'shi' ➡ Drop and add 'shite'.";
+            }
+            return "Review the Te-Form rule.";
+        };
+
+        // --- SE Logic ---
+        const playSE = (audioCtx, type) => {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            if (type === 'hit') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+            } else if (type === 'draw') {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.05);
+                gain.gain.setValueAtTime(0.05, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+            }
+            osc.connect(gain); gain.connect(audioCtx.destination);
+        };
+
+        // --- Main App ---
+        function App() {
+            const [gameState, setGameState] = useState('title');
+            const [floor, setFloor] = useState(1);
+            
+            const [playerHp, setPlayerHp] = useState(20);
+            const [maxPlayerHp] = useState(20);
+            
+            const [score, setScore] = useState(0); 
+            const [hand, setHand] = useState([]);
+            const [activeNode, setActiveNode] = useState('normal_g2');
+            const [targetWordObj, setTargetWordObj] = useState(null);
+            const [foundIndex, setFoundIndex] = useState(0);
+            const [isWrong, setIsWrong] = useState(false);
+            const [isGuarding, setIsGuarding] = useState(false);
+            const [enemyState, setEnemyState] = useState('idle');
+            const [drawingIndices, setDrawingIndices] = useState([]);
+            const [selectedCharacter, setSelectedCharacter] = useState(CHARACTERS[1].image); // Default: hiro
+            const audioCtxRef = useRef(null);
+            
+            // ★ BGM管理用のRef
+            const bgmRef = useRef(null);
+
+            const [playerName, setPlayerName] = useState("");
+            const [isGeneratingImg, setIsGeneratingImg] = useState(false);
+            const resultCardRef = useRef(null);
+
+            // 音声合成ライブラリの非同期ロード対策
+            useEffect(() => {
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.onvoiceschanged = () => {
+                        window.speechSynthesis.getVoices();
+                    };
+                    // 一度呼び出しておく
+                    window.speechSynthesis.getVoices();
+                }
+            }, []);
+
+            // ★ BGM再生開始処理
+            const startBGM = useCallback(() => {
+                if (!bgmRef.current) {
+                    // 同一フォルダにあるBGMファイル(ファイル名をご自身のものに書き換えてください)
+                    const audio = new Audio('./bgm.mp3');
+                    audio.loop = true;
+                    audio.volume = 0.05; // 読み上げを邪魔しないごく小さい音量(5%)
+                    bgmRef.current = audio;
+                }
+                // ブラウザの自動再生ポリシーによってブロックされる可能性があるためcatchを追加
+                bgmRef.current.play().catch(e => console.log("BGM playback blocked by browser:", e));
+            }, []);
+
+            // ★ Google TTSを優先して読み上げる処理
+            const speakWord = useCallback((text, rate = 0.9) => {
+                if (!('speechSynthesis' in window)) return;
+                window.speechSynthesis.cancel();
+                const cleanText = text.split('(')[0];
+                const uttr = new SpeechSynthesisUtterance(cleanText);
+                uttr.lang = 'ja-JP';
+                uttr.rate = rate;
+
+                const voices = window.speechSynthesis.getVoices();
+                
+                // 1. まず「Google」かつ「日本語」の音声を探す
+                let selectedVoice = voices.find(voice => voice.lang.includes('ja') && voice.name.includes('Google'));
+                
+                // 2. なければ、他の日本語音声を探す
+                if (!selectedVoice) {
+                    selectedVoice = voices.find(voice => voice.lang.includes('ja'));
+                }
+                
+                if (selectedVoice) {
+                    uttr.voice = selectedVoice;
+                }
+
+                window.speechSynthesis.speak(uttr);
+            }, []);
+
+            const initAudio = () => {
+                if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+            };
+
+            const shuffle = (array) => {
+                const newArr = [...array];
+                for (let i = newArr.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+                }
+                return newArr;
+            };
+
+            const getWordForStage = useCallback((nodeKey) => {
+                const tags = ENEMY_TYPES[nodeKey].tags;
+                const candidates = WORD_DB.filter(w => tags.some(t => w.tags.includes(t)));
+                return candidates[Math.floor(Math.random() * candidates.length)];
+            }, []);
+
+            const refillHand = useCallback((neededChar, isSuffixPhase, currentNodeKey, isGuardingAction = false) => {
+                let pool = [];
+                if (isSuffixPhase) {
+                    pool = [...ALL_SUFFIXES];
+                } else {
+                    const tags = ENEMY_TYPES[currentNodeKey].tags;
+                    const availableWords = WORD_DB.filter(w => tags.some(t => w.tags.includes(t)));
+                    pool = [...new Set(availableWords.map(w => w.word[0]))];
+                }
+
+                let tempPool = pool.filter(c => c !== neededChar);
+                tempPool = shuffle(tempPool);
+                
+                let newHand = [];
+                
+                const isAccident = !isGuardingAction && Math.random() < 0.25;
+                
+                if (!isAccident) {
+                    newHand.push(neededChar);
+                }
+                
+                while (newHand.length < 5 && tempPool.length > 0) {
+                    newHand.push(tempPool.shift());
+                }
+                
+                if (newHand.length < 5 && !isSuffixPhase) {
+                    let extraPool = ALL_STEMS.filter(c => !newHand.includes(c) && c !== neededChar);
+                    extraPool = shuffle(extraPool);
+                    while(newHand.length < 5 && extraPool.length > 0) {
+                        newHand.push(extraPool.shift());
+                    }
+                }
+
+                if (newHand.length < 5 && !newHand.includes(neededChar)) {
+                    newHand.push(neededChar);
+                }
+                
+                return shuffle(newHand);
+            }, []);
+
+            const animateRefill = useCallback((neededChar, isSuffixPhase, nodeKey, isGuardingAction = false) => {
+                const newHand = refillHand(neededChar, isSuffixPhase, nodeKey, isGuardingAction);
+                setHand([]);
+                setDrawingIndices([]);
+                newHand.forEach((card, i) => {
+                    setTimeout(() => {
+                        playSE(audioCtxRef.current, 'draw');
+                        setHand(prev => {
+                            const updated = [...prev];
+                            updated[i] = card;
+                            return updated.filter(c => c !== undefined);
+                        });
+                        setHand(newHand.slice(0, i + 1));
+                        setDrawingIndices(prev => [...prev, i]);
+                    }, i * 80);
+                });
+            }, [refillHand]);
+
+            const startBattle = useCallback((nodeKey, currentFloor) => {
+                initAudio();
+                const wordObj = getWordForStage(nodeKey);
+                
+                setActiveNode(nodeKey);
+                setTargetWordObj(wordObj);
+                setFoundIndex(0); // 0 = Stem Phase
+                setGameState('battle');
+                setIsWrong(false);
+                setIsGuarding(false);
+                setEnemyState('enter');
+                
+                setTimeout(() => {
+                    animateRefill(wordObj.word[0], false, nodeKey, false);
+                    setEnemyState('idle');
+                    speakWord(wordObj.masu);
+                }, 600);
+            }, [getWordForStage, animateRefill, speakWord]);
+
+            const playCard = (cardValue, cardIndex) => {
+                if (gameState !== 'battle' || isWrong || isGuarding || enemyState !== 'idle') return;
+                
+                const neededChar = targetWordObj.word[foundIndex];
+                
+                if (cardValue === neededChar) {
+                    playSE(audioCtxRef.current, 'hit');
+                    
+                    const nextIndex = foundIndex + 1;
+                    setFoundIndex(nextIndex);
+                    
+                    setHand(prev => prev.filter((_, i) => i !== cardIndex));
+                    
+                    if (nextIndex === targetWordObj.word.length) {
+                        setEnemyState('exit');
+                        setHand([]);
+                        setScore(prev => prev + ENEMY_TYPES[activeNode].points);
+                        speakWord(targetWordObj.word.join(''));
+                        
+                        setTimeout(() => {
+                            setGameState('result');
+                        }, 1000);
+                    } else {
+                        setHand([]);
+                        setIsGuarding(true);
+                        setTimeout(() => {
+                            animateRefill(targetWordObj.word[nextIndex], true, activeNode, false);
+                            setIsGuarding(false);
+                        }, 300);
+                    }
+                } else {
+                    playSE(audioCtxRef.current, 'error');
+                    setIsWrong(true);
+                    setPlayerHp(prev => Math.max(0, prev - 10));
+                    setTimeout(() => setIsWrong(false), 800);
+                }
+            };
+
+            const guardAndDraw = () => {
+                if (gameState !== 'battle' || isWrong || isGuarding || enemyState !== 'idle') return;
+                setIsGuarding(true);
+                const isSuffixPhase = foundIndex === 1;
+                setTimeout(() => {
+                    animateRefill(targetWordObj.word[foundIndex], isSuffixPhase, activeNode, true);
+                    setIsGuarding(false);
+                }, 600);
+            };
+
+            const selectNextPath = (nodeKey) => {
+                startBattle(nodeKey, floor);
+            };
+
+            const downloadResult = async () => {
+                if (!resultCardRef.current || isGeneratingImg) return;
+                setIsGeneratingImg(true);
+                try {
+                    const canvas = await window.html2canvas(resultCardRef.current, {
+                        scale: 2,
+                        backgroundColor: "#050505",
+                        logging: false
+                    });
+                    const image = canvas.toDataURL("image/png");
+                    const safeName = playerName.trim() || "Slayer";
+                    const link = document.createElement("a");
+                    link.download = `Slay_Te_Form_${safeName}.png`;
+                    link.href = image;
+                    link.click();
+                } catch (error) {
+                    console.error("Image generation failed:", error);
+                } finally {
+                    setIsGeneratingImg(false);
+                }
+            };
+
+            useEffect(() => {
+                if (playerHp <= 0 && gameState === 'battle') setGameState('gameover');
+            }, [playerHp, gameState]);
+
+            const getCardTextSize = (text) => {
+                if(text.length >= 4) return 'text-2xl md:text-4xl';
+                if(text.length === 3) return 'text-3xl md:text-5xl';
+                if(text.length === 2) return 'text-5xl md:text-6xl';
+                return 'text-6xl md:text-8xl';
+            };
+
+            // --- Sub Views ---
+            const TitleScreen = () => (
+                <div className="flex flex-col items-center justify-center h-screen text-white bg-[#020202] p-6 text-center">
+                    <div className="relative mb-12">
+                        <div className="absolute inset-0 bg-orange-700 blur-[100px] opacity-40"></div>
+                        <Icon name="Sword" size={140} className="text-orange-500 relative z-10" />
+                    </div>
+                    <h1 className="text-6xl md:text-8xl font-black italic mb-6 tracking-tighter leading-none">
+                        SLAY THE <br/><span className="text-orange-500 underline decoration-[12px] underline-offset-8">TE-FORM</span>
+                    </h1>
+                    <p className="text-slate-400 font-bold tracking-widest mb-16 uppercase text-sm">
+                        Listen to the sound.<br/>Build the Te-Form.
+                    </p>
+                    <button 
+                        onClick={() => {
+                            setGameState('char_select');
+                        }}
+                        className="px-20 py-8 bg-white text-black text-3xl font-black rounded-sm hover:bg-orange-600 hover:text-white transition-all transform hover:scale-105 active:scale-95 shadow-[0_0_50px_rgba(255,255,255,0.15)]"
+                    >
+                        START ASCENT
+                    </button>
+                </div>
+            );
+
+            // ★ キャラクター選択画面
+            const CharSelectScreen = () => (
+                <div className="flex flex-col items-center justify-center h-screen text-white bg-[#020202] p-6 text-center relative overflow-hidden">
+                    <div className="absolute inset-0 bg-orange-900 blur-[100px] opacity-20"></div>
+                    <h2 className="text-4xl md:text-5xl font-black italic mb-12 tracking-tighter z-10">CHOOSE YOUR CHARACTER</h2>
+                    
+                    <div className="flex flex-wrap justify-center gap-8 z-10">
+                        {CHARACTERS.map(char => (
+                            <button 
+                                key={char.id}
+                                onClick={() => {
+                                    setSelectedCharacter(char.image);
+                                    setFloor(1); 
+                                    setPlayerHp(20); 
+                                    setScore(0);
+                                    startBGM(); 
+                                    setGameState('map');
+                                }}
+                                className="flex flex-col items-center p-6 bg-slate-900 border-4 border-slate-700 rounded-3xl hover:border-orange-500 hover:scale-105 transition-all shadow-xl group w-48"
+                            >
+                                <div className="w-32 h-32 mb-4 bg-black rounded-2xl p-2 relative overflow-hidden flex items-center justify-center">
+                                    {/* 選択用の画像（エラー時はアイコン表示） */}
+                                    <img 
+                                        src={char.image} 
+                                        alt={char.name} 
+                                        className="w-full h-full object-contain relative z-10 group-hover:scale-110 transition-transform"
+                                        onError={(e) => {
+                                            e.target.style.display = 'none';
+                                            if(e.target.nextElementSibling) e.target.nextElementSibling.style.display = 'flex';
+                                        }}
+                                    />
+                                    <div style={{ display: 'none' }} className="absolute inset-0 items-center justify-center bg-slate-800">
+                                        <Icon name="User" size={60} className="text-slate-500" />
+                                    </div>
+                                </div>
+                                <h3 className="text-2xl font-black text-white">{char.name}</h3>
+                                <p className="text-xs text-orange-400 font-bold uppercase tracking-widest mt-2">{char.desc}</p>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            );
+
+            const SpireMap = () => {
+                const choices = useMemo(() => {
+                    if (floor === 10) return ['boss'];
+                    // 常に ノーマル2種、エリート1種 をシャッフルして提示する
+                    return shuffle(['normal_g2', 'normal_g3', 'elite_g1']);
+                }, [floor]);
+
+                return (
+                    <div className="h-screen w-full bg-[#050505] flex flex-col items-center relative overflow-hidden p-8">
+                        <Icon name="Castle" size={400} className="absolute bottom-0 text-slate-900 -z-10 opacity-40" />
+                        <div className="z-10 flex flex-col items-center w-full max-w-4xl h-full">
+                            <div className="text-center mb-12">
+                                <div className="flex items-center justify-center gap-2 text-orange-400 font-black mb-2 uppercase tracking-[0.3em]">
+                                    <Icon name="ArrowUp" size={24} /> Spire Elevation: Floor {floor} / 10
+                                </div>
+                                <h2 className="text-5xl font-black text-white italic drop-shadow-xl uppercase">Map of Echoes</h2>
+                            </div>
+                            
+                            <div className="flex-1 w-full flex flex-col items-center justify-center relative">
+                                <div className="absolute w-1 h-full bg-gradient-to-b from-orange-900 to-transparent opacity-30"></div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 relative">
+                                    {choices.map((nodeKey) => {
+                                        const node = ENEMY_TYPES[nodeKey];
+                                        return (
+                                            <div key={nodeKey} className="flex flex-col items-center gap-6 group">
+                                                <div className="w-1 bg-orange-500 h-12 opacity-50"></div>
+                                                <button onClick={() => selectNextPath(nodeKey)} className={`w-56 h-72 bg-slate-900 border-4 rounded-3xl flex flex-col items-center justify-center gap-4 hover:scale-105 transition-all shadow-2xl relative overflow-hidden px-4 text-center ${node.type === 'elite' ? 'border-red-900 hover:border-red-500' : node.type === 'boss' ? 'border-purple-600' : 'border-slate-800 hover:border-orange-500'}`}>
+                                                    <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                                    
+                                                    <Icon name={node.icon} size={64} className={node.color} />
+                                                    
+                                                    <div className="text-3xl font-black text-white tracking-widest mt-2 uppercase">
+                                                        {node.type === 'elite' ? 'ELITE' : node.type === 'boss' ? 'BOSS' : 'NORMAL'}
+                                                    </div>
+                                                    
+                                                    <div className="mt-4 text-sm font-black text-yellow-500 bg-black/50 px-4 py-2 rounded-full border border-yellow-900/50">
+                                                        Reward: {node.points} pt
+                                                    </div>
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="mt-auto w-full flex justify-between items-center bg-slate-900/80 p-6 rounded-2xl border border-slate-800 backdrop-blur-md">
+                                <div className="flex items-center gap-8">
+                                    <div className="flex items-center gap-2 text-red-500 font-black"><Icon name="Heart" fill="currentColor" /> {playerHp} / {maxPlayerHp}</div>
+                                </div>
+                                <div className="flex items-center gap-2 text-yellow-500 font-black">
+                                    <Icon name="Trophy" size={20} /> SCORE: {score}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const BattleScreen = () => {
+                if (!activeNode || !targetWordObj) return null;
+                const isSuffixPhase = foundIndex === 1;
+                const enemyData = ENEMY_TYPES[activeNode];
+
+                return (
+                    <div className="h-screen flex flex-col bg-[#050505] text-white relative p-4 overflow-hidden font-sans italic">
+                        <div className="flex justify-between items-center z-20 bg-slate-900/60 p-4 rounded-2xl border border-slate-800 backdrop-blur-md">
+                            <div className="flex items-center gap-4 md:gap-6">
+                                <div className="flex items-center gap-2 text-yellow-500 font-black text-sm md:text-base"><Icon name="ArrowUp" size={20} /> FLOOR {floor}</div>
+                                <div className="flex items-center gap-2 text-red-500 font-black text-sm md:text-base"><Icon name="Heart" size={20} fill="currentColor" /> {playerHp} / {maxPlayerHp}</div>
+                            </div>
+                            
+                            <div className="bg-black/80 px-4 md:px-8 py-3 rounded-full border-2 border-orange-500/30 flex items-center gap-3 md:gap-4 shadow-xl">
+                                <button 
+                                    onClick={() => speakWord(targetWordObj.masu)} 
+                                    className="p-2 md:p-3 bg-blue-600 hover:bg-blue-500 rounded-full transition-transform active:scale-90 shadow-[0_0_15px_rgba(37,99,235,0.5)]"
+                                >
+                                    <Icon name="Volume2" size={24} className="text-white" />
+                                </button>
+                                
+                                <div className="text-base md:text-xl font-bold text-slate-400 mr-2 md:mr-6 tracking-[0.2em] kyokasho-font">
+                                    {getMaskedMasu(targetWordObj.masu)} ➡
+                                </div>
+                                
+                                {targetWordObj.word.map((part, i) => (
+                                    <div key={i} className="flex flex-col items-center min-w-[2.5rem] md:min-w-[4rem]">
+                                        <span className={`text-2xl md:text-4xl font-bold kyokasho-font ${i < foundIndex ? 'text-green-400 scale-110' : i === foundIndex ? 'text-white' : 'text-slate-700'}`}>
+                                            {i < foundIndex ? part : '？'}
+                                        </span>
+                                        <div className={`w-full h-1.5 mt-2 rounded-full ${i === foundIndex ? 'bg-yellow-500 animate-pulse' : i < foundIndex ? 'bg-green-500 shadow-[0_0_10px_#4ade80]' : 'bg-slate-800'}`} />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex-1 flex items-center justify-around px-2 md:px-12 relative">
+                            <div className="flex flex-col items-center">
+                                <div className={`relative w-40 h-40 md:w-56 md:h-56 bg-gradient-to-br from-slate-800 to-slate-950 rounded-3xl border-4 transition-all duration-300 ${isWrong ? 'border-red-600 animate-shake shadow-[0_0_40px_rgba(220,38,38,0.4)]' : isGuarding ? 'border-blue-400 scale-110 shadow-[0_0_30px_rgba(59,130,246,0.5)]' : 'border-slate-700'} flex items-center justify-center shadow-2xl overflow-hidden`}>
+                                    {isGuarding ? <Icon name="Shield" size={120} className="text-blue-400 animate-pulse" /> : (
+                                        <div className="w-full h-full p-4 flex items-center justify-center relative">
+                                            {/* ★ 選択されたキャラクター画像を表示 */}
+                                            <img 
+                                                src={selectedCharacter} alt="Hero" className="w-full h-full object-contain relative z-10"
+                                                onError={(e) => {
+                                                    e.target.style.display = 'none';
+                                                    if(e.target.nextElementSibling) {
+                                                        e.target.nextElementSibling.style.display = 'block';
+                                                    }
+                                                }}
+                                            />
+                                            <div style={{ display: 'none' }} className="absolute inset-0 flex items-center justify-center">
+                                                <Icon name="User" size={100} className="text-slate-500" />
+                                            </div>
+                                        </div>
+                                    )}
+                                    {isWrong && <Icon name="XCircle" size={100} className="absolute text-red-500" />}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col items-center gap-4">
+                                <div className={`text-[12px] md:text-sm font-black text-white uppercase tracking-[0.3em] px-6 py-3 rounded-full border-2 transition-colors ${isSuffixPhase ? 'bg-orange-900/50 border-orange-500' : 'bg-slate-800 border-slate-500'}`}>
+                                    {isSuffixPhase ? 'Phase: SUFFIX' : 'Phase: STEM'}
+                                </div>
+                            </div>
+
+                            <div className={`flex flex-col items-center transition-all duration-500 transform
+                                ${enemyState === 'enter' ? 'translate-x-[200%] opacity-0' : ''}
+                                ${enemyState === 'idle' ? 'translate-x-0 opacity-100' : ''}
+                                ${enemyState === 'exit' ? '-translate-y-[200%] rotate-45 opacity-0' : ''}
+                            `}>
+                                <div className="mb-6 drop-shadow-[0_0_50px_rgba(0,0,0,0.8)]">
+                                    <Icon name={enemyData.icon} size={160} className={`${enemyData.color}`} />
+                                </div>
+                                <div className="bg-slate-900/80 px-6 py-2 rounded-full border border-slate-700">
+                                    <span className="uppercase tracking-[0.3em] text-slate-300 font-black text-xs md:text-sm">{enemyData.name}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className={`h-72 md:h-80 border-t border-slate-800 p-4 flex flex-col gap-4 md:gap-6 relative z-30 transition-colors duration-500 ${isSuffixPhase ? 'bg-gradient-to-t from-orange-950/40 to-black' : 'bg-gradient-to-t from-black to-slate-900'}`}>
+                            <div className="flex justify-between items-center px-4 md:px-10">
+                                <button onClick={guardAndDraw} disabled={isGuarding || isWrong || enemyState !== 'idle' || hand.length === 0} className="flex items-center justify-center gap-2 md:gap-3 bg-blue-700 hover:bg-blue-600 px-6 md:px-8 py-3 md:py-4 rounded-xl font-black text-sm md:text-lg shadow-[0_0_25px_rgba(37,99,235,0.4)] transition-all active:scale-95 disabled:opacity-30">
+                                    <Icon name="RefreshCw" size={24} /> NO MATCH? REDRAW
+                                </button>
+                                <div className="text-[12px] md:text-[14px] font-black text-yellow-500 uppercase tracking-widest hidden md:block">
+                                    SCORE: {score}
+                                </div>
+                            </div>
+                            
+                            <div className="flex justify-center gap-2 md:gap-4 h-full relative px-2">
+                                {hand.map((card, i) => (
+                                    <button 
+                                        key={`${card}-${i}`} 
+                                        onClick={() => playCard(card, i)} 
+                                        disabled={isGuarding || isWrong || enemyState !== 'idle'} 
+                                        className={`flex-1 max-w-[120px] md:max-w-[140px] h-full bg-gradient-to-b rounded-xl md:rounded-2xl border-2 flex flex-col items-center justify-center shadow-2xl hover:-translate-y-8 md:hover:-translate-y-12 transition-all active:scale-90 group relative 
+                                            ${isSuffixCard(card) ? 'from-orange-950 to-black border-orange-500/40 hover:border-orange-400' : 'from-slate-800 to-black border-slate-700 hover:border-slate-400'}
+                                            ${drawingIndices.includes(i) ? 'animate-card-draw' : ''}`}
+                                    >
+                                        <div className={`${getCardTextSize(card)} font-bold ${isSuffixCard(card) ? 'text-orange-400' : 'text-white'} kyokasho-font drop-shadow-lg`}>
+                                            {card}
+                                        </div>
+                                        <div className={`absolute bottom-3 text-[8px] md:text-[9px] font-black uppercase tracking-[0.2em] ${isSuffixCard(card) ? 'text-orange-600' : 'text-slate-600'}`}>
+                                            {isSuffixCard(card) ? 'Suffix' : 'Stem'}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const ResultScreen = () => {
+                if (!targetWordObj) return null;
+                const explanation = getExplanation(targetWordObj);
+
+                const handleNext = () => {
+                    if (floor >= 10) setGameState('victory');
+                    else {
+                        setFloor(prev => prev + 1);
+                        setGameState('map');
+                    }
+                };
+
+                return (
+                    <div className="h-screen w-full bg-[#050505] flex flex-col items-center justify-center p-6 text-center text-white relative">
+                        <div className="absolute inset-0 bg-blue-900 blur-[100px] opacity-20"></div>
+                        <div className="z-10 bg-slate-900 border border-slate-700 p-8 rounded-2xl max-w-2xl w-full shadow-2xl relative overflow-hidden flex flex-col items-center animate-card-draw">
+                            <h2 className="text-2xl md:text-3xl font-black text-blue-400 mb-6 uppercase tracking-widest border-b border-slate-700 pb-4 w-full">Battle Review</h2>
+                            
+                            <div className="flex flex-col items-center gap-4 mb-8">
+                                <div className="text-4xl md:text-5xl font-black kyokasho-font text-slate-300">
+                                    {targetWordObj.masu.split('(')[0]}
+                                </div>
+                                <Icon name="ArrowDown" size={32} className="text-slate-500" />
+                                <div className="text-5xl md:text-6xl font-black kyokasho-font text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]">
+                                    {targetWordObj.word.join('')}
+                                </div>
+                            </div>
+                            
+                            <div className="bg-black/50 p-6 rounded-xl border border-blue-900/50 mb-8 w-full">
+                                <div className="flex items-start gap-4 text-left">
+                                    <Icon name="Info" size={28} className="text-blue-400 shrink-0 mt-1" />
+                                    <div>
+                                        <h3 className="text-sm md:text-base font-bold text-blue-300 mb-2 uppercase tracking-widest">Rule</h3>
+                                        <p className="text-lg md:text-xl font-medium text-slate-300 leading-relaxed">{explanation}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button 
+                                onClick={handleNext}
+                                className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-black text-xl md:text-2xl rounded-xl transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_20px_rgba(37,99,235,0.4)]"
+                            >
+                                CONTINUE ASCENT
+                            </button>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="w-full h-screen bg-black overflow-hidden font-sans select-none">
+                    {gameState === 'title' && <TitleScreen />}
+                    {gameState === 'char_select' && <CharSelectScreen />}
+                    {gameState === 'map' && <SpireMap />}
+                    {gameState === 'battle' && <BattleScreen />}
+                    {gameState === 'result' && <ResultScreen />}
+                    
+                    {(gameState === 'gameover' || gameState === 'victory') && (
+                        <div className={`h-screen flex flex-col items-center justify-center text-white ${gameState === 'gameover' ? 'bg-[#050505]' : 'bg-slate-900'} p-4`}>
+                            
+                            <div ref={resultCardRef} className={`flex flex-col items-center justify-center w-full max-w-lg p-8 rounded-3xl border shadow-2xl ${gameState === 'gameover' ? 'bg-slate-900/80 border-slate-700' : 'bg-black/60 border-slate-800'}`}>
+                                <Icon name={gameState === 'gameover' ? "BookOpen" : "Trophy"} size={100} className={gameState === 'gameover' ? "text-blue-500" : "text-yellow-500"} />
+                                
+                                <h2 className={`text-5xl md:text-7xl font-black mb-6 italic tracking-tighter ${gameState === 'gameover' ? 'text-blue-500' : 'text-yellow-500'} text-center leading-none mt-6`}>
+                                    {gameState === 'gameover' ? "TRIAL\nENDED" : "SPIRE\nCONQUERED"}
+                                </h2>
+                                
+                                <div className="text-3xl md:text-4xl font-black text-yellow-500 mb-8 tracking-widest bg-black/80 px-8 md:px-12 py-4 rounded-full border-2 border-yellow-900/50 shadow-[0_0_30px_rgba(234,179,8,0.2)] whitespace-nowrap">
+                                    SCORE: {score}
+                                </div>
+
+                                <div className="w-full max-w-sm">
+                                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest text-center">Enter Your Name</label>
+                                    <input 
+                                        type="text" 
+                                        maxLength="15"
+                                        placeholder="Slayer" 
+                                        value={playerName}
+                                        onChange={(e) => setPlayerName(e.target.value)}
+                                        className="w-full text-center text-3xl font-black text-white bg-slate-900 border-2 border-slate-700 focus:border-orange-500 focus:outline-none rounded-xl p-4 transition-colors placeholder-slate-700 select-text"
+                                    />
+                                </div>
+                                <div className="text-[10px] text-slate-600 font-bold tracking-[0.3em] uppercase mt-6">
+                                    Slay the Te-Form
+                                </div>
+                            </div>
+
+                            <div data-html2canvas-ignore className="flex flex-col gap-4 mt-8 w-full max-w-sm">
+                                <button 
+                                    onClick={downloadResult} 
+                                    disabled={isGeneratingImg}
+                                    className={`w-full text-white font-black py-4 rounded-xl transition-all shadow-lg active:scale-95 text-xl flex justify-center items-center gap-2
+                                        ${isGeneratingImg ? 'bg-slate-700 cursor-not-allowed' : 'bg-blue-700 hover:bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.4)]'}`}
+                                >
+                                    {isGeneratingImg ? "Generating..." : "Save Result as PNG"}
+                                </button>
+                                <button onClick={() => {
+                                    if(bgmRef.current) { bgmRef.current.pause(); bgmRef.current.currentTime = 0; }
+                                    setGameState('title');
+                                }} className="w-full bg-white text-black font-black text-xl py-4 rounded-xl hover:bg-slate-200 transition shadow-lg active:scale-95">
+                                    {gameState === 'gameover' ? "RETRY" : "GLORY!"}
+                                </button>
+                            </div>
+
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
