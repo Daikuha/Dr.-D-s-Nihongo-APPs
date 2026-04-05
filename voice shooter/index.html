@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hiragana Voice Shooter</title>
+    <title>Hiragana Shooter</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -133,7 +133,16 @@
             );
         };
 
-        // --- ゲームデータ (音声認識用に、漢字やカタカナなど表記ゆれを含める) ---
+        // --- ゲームデータ ---
+        const shuffleArray = (array) => {
+            const newArr = [...array];
+            for (let i = newArr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+            }
+            return newArr;
+        };
+
         const WORDS = [
             { kana: 'あか', matches: ['あか', 'アカ', '赤'] },
             { kana: 'あお', matches: ['あお', 'アオ', '青'] },
@@ -147,10 +156,9 @@
             { kana: 'さる', matches: ['さる', 'サル', '猿'] },
             { kana: 'とり', matches: ['とり', 'トリ', '鳥'] },
             { kana: 'くま', matches: ['くま', 'クマ', '熊'] },
-            { kana: 'ぶた', matches: ['ぶた', 'ブタ', '豚'] },
-            { kana: 'ぞう', matches: ['ぞう', 'ゾウ', '象'] },
-            { kana: 'きりん', matches: ['きりん', 'キリン', '麒麟'] },
-            { kana: 'らいおん', matches: ['らいおん', 'ライオン'] },
+            { kana: 'とうほく', matches: ['とうほく', 'トウホク', '東北'] },
+            { kana: 'どうも', matches: ['どうも', 'ドウモ', 'ドーモ'] },
+            { kana: 'かわうち', matches: ['かわうち', 'カワウチ', '川内', '河内'] },
             { kana: 'さくら', matches: ['さくら', 'サクラ', '桜'] },
             { kana: 'すいか', matches: ['すいか', 'スイカ', '西瓜'] },
             { kana: 'りんご', matches: ['りんご', 'リンゴ', '林檎'] },
@@ -165,8 +173,8 @@
             { kana: 'くるま', matches: ['くるま', 'クルマ', '車'] },
             { kana: 'でんしゃ', matches: ['でんしゃ', 'デンシャ', '電車'] },
             { kana: 'ひこうき', matches: ['ひこうき', 'ヒコウキ', '飛行機'] },
-            { kana: 'ふね', matches: ['ふね', 'フネ', '船', '舟'] },
-            { kana: 'ばす', matches: ['ばす', 'バス'] },
+            { kana: 'すみません', matches: ['すみません', 'スミマセン'] },
+            { kana: 'だいがく', matches: ['だいがく', 'ダイガク', '大学'] },
             { kana: 'えき', matches: ['えき', 'エキ', '駅'] },
             { kana: 'ほん', matches: ['ほん', 'ホン', '本'] },
             { kana: 'かばん', matches: ['かばん', 'カバン', '鞄'] },
@@ -178,20 +186,15 @@
             { kana: 'ほし', matches: ['ほし', 'ホシ', '星'] },
             { kana: 'つき', matches: ['つき', 'ツキ', '月'] },
             { kana: 'ゆき', matches: ['ゆき', 'ユキ', '雪'] },
-            { kana: 'はな', matches: ['はな', 'ハナ', '花', '鼻'] },
-            { kana: 'きっぷ', matches: ['きっぷ', 'キップ', '切符'] },
-            { kana: 'がっこう', matches: ['がっこう', 'ガッコウ', '学校'] },
-            { kana: 'きょうりゅう', matches: ['きょうりゅう', 'キョウリュウ', '恐竜'] },
-            { kana: 'しんかんせん', matches: ['しんかんせん', 'シンカンセン', '新幹線'] },
-            { kana: 'びょういん', matches: ['びょういん', 'ビョウイン', '病院'] },
-            { kana: 'しゃしん', matches: ['しゃしん', 'シャシン', '写真'] },
-            { kana: 'おもちゃ', matches: ['おもちゃ', 'オモチャ', '玩具'] },
+            { kana: 'ありがとう', matches: ['ありがとう', 'アリガトウ', '有難う'] },
+            { kana: 'にほん', matches: ['にほん', 'ニホン', '日本'] },
+            { kana: 'せんだい', matches: ['せんだい', 'センダイ', '仙台'] },
+            { kana: 'きょうしつ', matches: ['きょうしつ', 'キョウシツ', '教室'] },
+            { kana: 'せんせい', matches: ['せんせい', 'センセイ', '先生'] },
             { kana: 'じゅぎょう', matches: ['じゅぎょう', 'ジュギョウ', '授業'] },
             { kana: 'ざっし', matches: ['ざっし', 'ザッシ', '雑誌'] },
-            { kana: 'ひゃく', matches: ['ひゃく', 'ヒャク', '百', '100'] }
+            { kana: 'きっぷ', matches: ['きっぷ', 'キップ', '切符'] }
         ];
-
-        const MAX_WORDS = 40; // クリアに必要な単語数
 
         // --- 効果音 (Web Audio API) ---
         const playSE = (ctx, type) => {
@@ -265,10 +268,11 @@
         function App() {
             const [gameState, setGameState] = useState('title'); // 'title', 'playing', 'gameover', 'victory'
             const [userName, setUserName] = useState('');
+            const [difficulty, setDifficulty] = useState('easy'); 
+            const [maxWords, setMaxWords] = useState(10); 
             const [lives, setLives] = useState(3);
             const [score, setScore] = useState(0);
             const [combo, setCombo] = useState(0);
-            const [level, setLevel] = useState(1);
             const [destroyedCount, setDestroyedCount] = useState(0);
             
             const [currentWord, setCurrentWord] = useState(null);
@@ -276,16 +280,22 @@
             const [particles, setParticles] = useState([]);
             const [isDangerMode, setIsDangerMode] = useState(false); 
             
-            // 音声認識用ステート
             const [isListening, setIsListening] = useState(false);
             const [spokenText, setSpokenText] = useState("");
             const [showBeam, setShowBeam] = useState(false);
+
+            // --- Ref による安定した状態管理 (クロージャ対策) ---
+            const difficultyRef = useRef('easy');
+            const maxWordsRef = useRef(10);
+            const comboRef = useRef(0);
+            const isDangerModeRef = useRef(false);
+            const missedWordsRef = useRef(new Set()); 
 
             const audioCtxRef = useRef(null);
             const enemyZRef = useRef(-4000);
             const enemyElRef = useRef(null);
             const requestRef = useRef(null);
-            const speedRef = useRef(3); 
+            const speedRef = useRef(2); 
             const isInvincibleRef = useRef(false);
             const wordBagRef = useRef([]); 
             const isExplodingRef = useRef(false); 
@@ -295,12 +305,12 @@
             const currentWordRef = useRef(null);
             const isPlayingRef = useRef(false);
             const isListeningRef = useRef(false);
+            const fireBeamRef = useRef(null); 
 
             useEffect(() => {
                 currentWordRef.current = currentWord;
             }, [currentWord]);
 
-            // ゲーム中かどうかを常に追跡
             useEffect(() => {
                 isPlayingRef.current = gameState === 'playing';
             }, [gameState]);
@@ -312,7 +322,6 @@
                         recognitionRef.current.start();
                     } catch (e) {
                         isListeningRef.current = false;
-                        console.warn("SpeechRecognition start error:", e);
                     }
                 }
             }, []);
@@ -323,7 +332,7 @@
 
                 const recognition = new SpeechRecognition();
                 recognition.lang = 'ja-JP';
-                recognition.interimResults = true; // リアルタイム判定
+                recognition.interimResults = true; 
                 recognition.continuous = true;
 
                 recognition.onresult = (event) => {
@@ -332,18 +341,15 @@
                         transcript += event.results[i][0].transcript;
                     }
                     
-                    // 空白を除去して画面に表示
                     const cleanTranscript = transcript.replace(/\s+/g, '');
                     setSpokenText(cleanTranscript);
 
-                    // 正解判定
                     const word = currentWordRef.current;
                     if (word && !isExplodingRef.current && !isShootingRef.current) {
-                        // transcriptの中に、想定される正解リスト(matches)のいずれかが含まれていればOK
                         const isMatch = word.matches.some(m => cleanTranscript.includes(m));
                         if (isMatch) {
                             recognition.stop();
-                            fireBeam();
+                            if (fireBeamRef.current) fireBeamRef.current(); 
                         }
                     }
                 };
@@ -356,14 +362,12 @@
                 recognition.onend = () => {
                     setIsListening(false);
                     isListeningRef.current = false;
-                    // プレイ中で、演出中でなければ自動的に聞き取りを再開する（ボタンなしで連続プレイ可能に）
                     if (isPlayingRef.current && !isExplodingRef.current && !isShootingRef.current) {
                         setTimeout(() => startRecognition(), 50);
                     }
                 };
 
-                recognition.onerror = (e) => {
-                    console.error("Speech Recognition Error:", e);
+                recognition.onerror = () => {
                     setIsListening(false);
                     isListeningRef.current = false;
                 };
@@ -378,14 +382,12 @@
 
             const spawnNextWord = useCallback(() => {
                 if (wordBagRef.current.length === 0) {
-                    wordBagRef.current = [...WORDS].sort(() => Math.random() - 0.5);
+                    wordBagRef.current = shuffleArray(WORDS);
                 }
                 const nextWord = wordBagRef.current.pop();
                 setCurrentWord(nextWord);
                 setSpokenText("");
                 enemyZRef.current = -4000;
-
-                // 次の単語が出たら自動で音声認識を開始
                 startRecognition();
             }, [startRecognition]);
 
@@ -394,57 +396,42 @@
                 setLives(3);
                 setScore(0);
                 setCombo(0);
-                setLevel(1);
+                comboRef.current = 0;
                 setDestroyedCount(0);
-                speedRef.current = 8; // 初期スピード
+                missedWordsRef.current.clear(); 
+
+                let initialSpeed = 6; 
+                let targetWords = 20;
+                if (difficulty === 'easy') {
+                    initialSpeed = 2; 
+                    targetWords = 10;
+                } else if (difficulty === 'hard') {
+                    initialSpeed = 10; 
+                    targetWords = 30;
+                }
+                
+                setMaxWords(targetWords);
+                maxWordsRef.current = targetWords;
+                difficultyRef.current = difficulty;
+                speedRef.current = initialSpeed;
+
                 wordBagRef.current = [];
                 setIsDangerMode(false);
+                isDangerModeRef.current = false;
                 isExplodingRef.current = false;
                 isShootingRef.current = false;
                 setGameState('playing');
                 spawnNextWord();
             };
 
-            const fireBeam = useCallback(() => {
-                isShootingRef.current = true;
-                setShowBeam(true);
-                playSE(audioCtxRef.current, 'beam');
-                
-                // 0.2秒後にビームが敵に到達
-                setTimeout(() => {
-                    setShowBeam(false);
-                    destroyEnemy();
-                    isShootingRef.current = false;
-                    setSpokenText('');
-                }, 200);
-            }, []);
-
-            const takeDamage = useCallback(() => {
-                if (isInvincibleRef.current) return;
-                
-                // 強制的に認識をストップ
-                if (isListening && recognitionRef.current) {
-                    recognitionRef.current.stop();
-                }
-
-                setLives(prev => {
-                    const next = prev - 1;
-                    if (next <= 0) setGameState('gameover');
-                    return next;
-                });
-                setCombo(0);
-                playSE(audioCtxRef.current, 'damage');
-                setIsDamaged(true);
-                isInvincibleRef.current = true;
-                
-                setTimeout(() => {
-                    setIsDamaged(false);
-                    isInvincibleRef.current = false;
-                }, 400); 
-            }, [isListening]);
-
             const destroyEnemy = useCallback(() => {
-                isExplodingRef.current = true; // 爆発演出開始（ヒットストップ）
+                // 安全装置: 既に爆発演出中なら無視（1単語に対する2重カウントを防止）
+                if (isExplodingRef.current) return;
+                
+                const currentDifficulty = difficultyRef.current;
+                const currentMaxWords = maxWordsRef.current;
+                
+                isExplodingRef.current = true; 
 
                 const z = enemyZRef.current;
                 const newParticles = Array.from({ length: 20 }).map((_, i) => ({
@@ -456,32 +443,37 @@
                 setParticles(newParticles);
                 setTimeout(() => setParticles([]), 500);
 
-                setScore(prev => prev + 100 + combo * 10);
-                setCombo(prev => prev + 1);
+                setScore(prev => prev + 100 + comboRef.current * 10);
+                setCombo(prev => {
+                    const next = prev + 1;
+                    comboRef.current = next;
+                    return next;
+                });
                 playSE(audioCtxRef.current, 'destroy');
 
-                // 200ミリ秒間待ってから次の単語を出す
                 setTimeout(() => {
                     setDestroyedCount(prev => {
                         const nextCount = prev + 1;
                         
-                        if (nextCount >= MAX_WORDS) {
-                            setTimeout(() => setGameState('victory'), 500);
-                            isExplodingRef.current = false;
+                        // クリア判定
+                        if (nextCount >= currentMaxWords) {
+                            // 最後の単語もしっかり爆発を見せてから1.5秒後にクリア画面へ（setCurrentWord(null)はしない）
+                            setTimeout(() => setGameState('victory'), 1500);
                             return nextCount;
                         }
 
-                        const newLevel = Math.floor(nextCount / 5) + 1;
-                        setLevel(newLevel);
+                        // 敵を倒すたびに少しずつ滑らかにスピードアップ
+                        const baseSpeed = currentDifficulty === 'easy' ? 2 : (currentDifficulty === 'hard' ? 10 : 6);
+                        const speedInc = currentDifficulty === 'easy' ? 0.2 : (currentDifficulty === 'hard' ? 0.4 : 0.3);
+                        speedRef.current = baseSpeed + (nextCount * speedInc);
 
-                        if (nextCount >= MAX_WORDS - 5) { // 終盤
-                            speedRef.current = 20; 
-                            if (!isDangerMode) {
+                        // 終盤のDanger Mode判定
+                        if (nextCount >= currentMaxWords - (currentDifficulty === 'easy' ? 2 : 5)) { 
+                            if (!isDangerModeRef.current) {
                                 setIsDangerMode(true);
+                                isDangerModeRef.current = true;
                                 playSE(audioCtxRef.current, 'danger');
                             }
-                        } else {
-                            speedRef.current = 8 + (newLevel - 1) * 1.5; 
                         }
                         
                         spawnNextWord();
@@ -489,12 +481,57 @@
                         return nextCount;
                     });
                 }, 200);
-            }, [combo, isDangerMode, spawnNextWord]);
+            }, [spawnNextWord]);
+
+            const fireBeam = useCallback(() => {
+                if (isShootingRef.current) return;
+                isShootingRef.current = true;
+                setShowBeam(true);
+                playSE(audioCtxRef.current, 'beam');
+                
+                setTimeout(() => {
+                    setShowBeam(false);
+                    destroyEnemy();
+                    isShootingRef.current = false;
+                    setSpokenText('');
+                }, 200);
+            }, [destroyEnemy]);
+
+            useEffect(() => {
+                fireBeamRef.current = fireBeam;
+            }, [fireBeam]);
+
+            const takeDamage = useCallback(() => {
+                if (isInvincibleRef.current) return;
+                
+                if (isListeningRef.current && recognitionRef.current) {
+                    recognitionRef.current.stop();
+                }
+
+                if (currentWordRef.current) {
+                    missedWordsRef.current.add(currentWordRef.current.kana);
+                }
+
+                setLives(prev => {
+                    const next = prev - 1;
+                    if (next <= 0) setGameState('gameover');
+                    return next;
+                });
+                setCombo(0);
+                comboRef.current = 0;
+                playSE(audioCtxRef.current, 'damage');
+                setIsDamaged(true);
+                isInvincibleRef.current = true;
+                
+                setTimeout(() => {
+                    setIsDamaged(false);
+                    isInvincibleRef.current = false;
+                }, 400); 
+            }, []);
 
             const update = useCallback(() => {
                 if (gameState !== 'playing') return;
                 
-                // 爆発・発射演出中は敵を前進させない
                 if (!isExplodingRef.current && !isShootingRef.current) {
                     enemyZRef.current += speedRef.current;
                     
@@ -520,7 +557,25 @@
             const downloadCertificate = () => {
                 const canvas = document.createElement('canvas');
                 canvas.width = 800;
-                canvas.height = 600;
+                
+                const missedArr = Array.from(missedWordsRef.current);
+                let missedTextLines = [];
+                if (missedArr.length > 0) {
+                    let currentLine = '';
+                    missedArr.forEach(word => {
+                        if (currentLine.length + word.length > 25) { 
+                            missedTextLines.push(currentLine);
+                            currentLine = word + ', ';
+                        } else {
+                            currentLine += word + ', ';
+                        }
+                    });
+                    if (currentLine) missedTextLines.push(currentLine.replace(/, $/, ''));
+                } else {
+                    missedTextLines.push('None (Perfect!)');
+                }
+
+                canvas.height = 600 + missedTextLines.length * 40; 
                 const ctx = canvas.getContext('2d');
 
                 ctx.fillStyle = '#0f172a'; 
@@ -548,13 +603,26 @@
 
                 ctx.fillStyle = '#cbd5e1';
                 ctx.font = '30px sans-serif';
-                ctx.fillText(`Words Destroyed: ${destroyedCount} / ${MAX_WORDS}`, canvas.width / 2, 400);
-                ctx.fillText(`Final Score: ${score}`, canvas.width / 2, 460);
+                
+                const modeText = difficultyRef.current.toUpperCase();
+                ctx.fillText(`Mode: ${modeText}`, canvas.width / 2, 380);
+                ctx.fillText(`Words Destroyed: ${destroyedCount} / ${maxWordsRef.current}`, canvas.width / 2, 430);
+                ctx.fillText(`Final Score: ${score}`, canvas.width / 2, 480);
 
-                const isClear = destroyedCount >= MAX_WORDS;
-                ctx.fillStyle = isClear ? '#4ade80' : '#f87171'; 
+                ctx.fillStyle = '#f87171';
+                ctx.font = '24px sans-serif';
+                ctx.fillText('Missed Words:', canvas.width / 2, 540);
+                
+                ctx.fillStyle = '#cbd5e1';
+                missedTextLines.forEach((line, index) => {
+                    ctx.fillText(line, canvas.width / 2, 580 + index * 35);
+                });
+
+                const finalY = 580 + missedTextLines.length * 35 + 40;
+                const isClear = destroyedCount >= maxWordsRef.current;
+                ctx.fillStyle = isClear ? '#4ade80' : '#fbbf24'; 
                 ctx.font = 'bold 45px sans-serif';
-                ctx.fillText(isClear ? 'MISSION CLEAR!' : 'MISSION FAILED', canvas.width / 2, 530);
+                ctx.fillText(isClear ? 'MISSION CLEAR!' : 'GOOD EFFORT!', canvas.width / 2, finalY);
 
                 const url = canvas.toDataURL('image/png');
                 const a = document.createElement('a');
@@ -589,11 +657,26 @@
                     <h1 className="text-5xl md:text-7xl font-black italic mb-4 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-600">
                         VOICE SHOOTER
                     </h1>
-                    <p className="text-slate-400 font-mono tracking-widest mb-10 uppercase text-sm md:text-base">
-                        Speak clearly to destroy {MAX_WORDS} targets!
+                    <p className="text-slate-400 font-mono tracking-widest mb-8 uppercase text-sm md:text-base">
+                        Speak clearly to destroy the targets!
                     </p>
                     
                     <div className="flex flex-col items-center gap-4 w-full max-w-sm">
+                        <div className="flex justify-center gap-2 w-full mb-2">
+                            {['easy', 'normal', 'hard'].map(level => (
+                                <button
+                                    key={level}
+                                    onClick={() => setDifficulty(level)}
+                                    className={`flex-1 py-3 rounded-xl font-black uppercase tracking-widest transition-all ${difficulty === level ? 'bg-cyan-500 text-white shadow-[0_0_15px_rgba(34,211,238,0.5)]' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                                >
+                                    {level}
+                                    <div className="text-[10px] opacity-70 mt-1 font-sans font-medium tracking-normal">
+                                        {level === 'easy' ? '10 Words / Slow' : level === 'normal' ? '20 Words / Normal' : '30 Words / Fast'}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+
                         <input 
                             type="text" 
                             placeholder="Enter your pilot name" 
@@ -631,7 +714,7 @@
                                 ))}
                             </div>
                             <div className={`text-xl font-black tracking-widest uppercase ${isDangerMode ? 'text-red-500 animate-bounce' : 'text-cyan-400'}`}>
-                                Target: {destroyedCount} / {MAX_WORDS}
+                                Destroyed: {destroyedCount} / {maxWords}
                             </div>
                             {isDangerMode && <div className="text-red-500 font-bold text-sm bg-red-950/80 px-2 py-1 rounded inline-block border border-red-500">WARNING: MAXIMUM SPEED</div>}
                         </div>
@@ -688,16 +771,16 @@
 
             const renderGameOverScreen = () => (
                 <div className="flex flex-col items-center justify-center h-full text-center relative z-10 bg-slate-950/80 animate-in fade-in duration-500 px-4">
-                    <Icon name="Skull" size={120} className="text-red-600 mb-8 animate-pulse drop-shadow-[0_0_30px_rgba(220,38,38,0.8)]" />
-                    <h2 className="text-6xl md:text-7xl font-black italic mb-4 tracking-tighter text-red-500">
-                        SYSTEM FAILURE
+                    <Icon name="AlertTriangle" size={120} className="text-orange-500 mb-8 animate-pulse drop-shadow-[0_0_30px_rgba(249,115,22,0.8)]" />
+                    <h2 className="text-6xl md:text-7xl font-black italic mb-4 tracking-tighter text-orange-500">
+                        NICE TRY!
                     </h2>
-                    <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 mb-8 w-full max-w-md shadow-2xl">
+                    <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 mb-8 w-full max-w-lg shadow-2xl">
                         <p className="text-slate-400 font-mono tracking-widest uppercase text-sm mb-2">Final Score</p>
                         <p className="text-6xl font-black text-yellow-400 mb-4">{score}</p>
-                        <p className="text-cyan-400 font-bold">Destroyed: {destroyedCount} / {MAX_WORDS}</p>
+                        <p className="text-cyan-400 font-bold">Destroyed: {destroyedCount} / {maxWords}</p>
                     </div>
-                    <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
+                    <div className="flex flex-col md:flex-row gap-4 w-full max-w-lg">
                         <button 
                             onClick={downloadCertificate}
                             className="flex-1 py-4 bg-cyan-600 text-white font-black text-lg rounded-xl hover:bg-cyan-500 transition shadow-[0_0_20px_rgba(34,211,238,0.4)] flex items-center justify-center gap-2 active:scale-95"
@@ -706,9 +789,15 @@
                         </button>
                         <button 
                             onClick={startGame}
-                            className="flex-1 py-4 bg-red-600 text-white font-black text-lg rounded-xl hover:bg-red-500 transition shadow-[0_0_20px_rgba(220,38,38,0.4)] flex items-center justify-center gap-2 active:scale-95"
+                            className="flex-1 py-4 bg-orange-600 text-white font-black text-lg rounded-xl hover:bg-orange-500 transition shadow-[0_0_20px_rgba(249,115,22,0.4)] flex items-center justify-center gap-2 active:scale-95"
                         >
                             <Icon name="RotateCcw" size={24} /> RETRY
+                        </button>
+                        <button 
+                            onClick={() => setGameState('title')}
+                            className="flex-1 py-4 bg-slate-700 text-white font-black text-lg rounded-xl hover:bg-slate-600 transition shadow-lg flex items-center justify-center gap-2 active:scale-95 border border-slate-600"
+                        >
+                            <Icon name="Home" size={24} /> TITLE
                         </button>
                     </div>
                 </div>
@@ -723,7 +812,7 @@
                     <div className="bg-slate-900 p-8 rounded-2xl border-4 border-yellow-500/50 mb-8 w-full max-w-md shadow-2xl">
                         <p className="text-slate-400 font-mono tracking-widest uppercase text-sm mb-2">Final Score</p>
                         <p className="text-7xl font-black text-yellow-400 mb-4">{score}</p>
-                        <p className="text-green-400 font-bold uppercase tracking-widest">All {MAX_WORDS} Words Destroyed</p>
+                        <p className="text-green-400 font-bold uppercase tracking-widest">All {maxWords} Words Destroyed</p>
                     </div>
                     <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
                         <button 
