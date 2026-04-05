@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Te-Form Ninja (テ形ニンジャ)</title>
+        <!-- Tailwind CSS -->
+        <script src="https://cdn.tailwindcss.com"></script>
+        <!-- React & ReactDOM -->
+        <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+        <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+        <!-- Babel -->
+        <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+        <!-- html2canvas (画像ダウンロード用) -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+        
+        <style>
+            body { 
+                font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; 
+                background-color: #0f172a; /* slate-900 */
+                color: white;
+                overflow: hidden; /* スクロール防止 */
+                touch-action: none; /* スマホでのスワイプによる画面移動防止 */
+                user-select: none;
+            }
+            
+            /* 斬撃アニメーション */
+            .slash-effect {
+                position: absolute;
+                background: white;
+                box-shadow: 0 0 10px 2px rgba(255,255,255,0.8);
+                transform-origin: center;
+                animation: slashAnim 0.2s ease-out forwards;
+                z-index: 50;
+            }
+            
+            @keyframes slashAnim {
+                0% { transform: translate(-50%, -50%) scaleX(0); opacity: 1; }
+                50% { transform: translate(-50%, -50%) scaleX(1); opacity: 1; }
+                100% { transform: translate(-50%, -50%) scaleX(1); opacity: 0; }
+            }
+            
+            .pop-in { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+            @keyframes popIn {
+                from { opacity: 0; transform: scale(0.5); }
+                to { opacity: 1; transform: scale(1); }
+            }
+            
+            /* 斬られた後の文字拡大フェードアウト */
+            .fade-up-out { animation: fadeUpOut 0.8s ease-out forwards; }
+            @keyframes fadeUpOut {
+                0% { opacity: 1; transform: scale(1) translateY(0); }
+                100% { opacity: 0; transform: scale(1.5) translateY(-20px); }
+            }
+            
+            /* 画面揺れ（ダメージ時） */
+            .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+            @keyframes shake {
+                10%, 90% { transform: translate3d(-4px, 0, 0); }
+                20%, 80% { transform: translate3d(6px, 0, 0); }
+                30%, 50%, 70% { transform: translate3d(-10px, 0, 0); }
+                40%, 60% { transform: translate3d(10px, 0, 0); }
+            }
+        </style>
+    </head>
+    <body>
+        <div id="root"></div>
+        
+        <script type="text/babel">
+            const { useState, useEffect, useRef } = React;
+            
+            // 単語リスト（ます形 -> テ形）
+            const WORD_LIST = [
+            // って (UP)
+            { masu: "かいます", te: "かって", dir: "UP" },
+            { masu: "あいます", te: "あって", dir: "UP" },
+            { masu: "まちます", te: "まって", dir: "UP" },
+            { masu: "とります", te: "とって", dir: "UP" },
+            { masu: "かえります", te: "かえって", dir: "UP" },
+            { masu: "いきます", te: "いって", dir: "UP", note: "(Exception!)" },
+            
+            // んで (DOWN)
+            { masu: "のみます", te: "のんで", dir: "DOWN" },
+            { masu: "よみます", te: "よんで", dir: "DOWN" },
+            { masu: "あそびます", te: "あそんで", dir: "DOWN" },
+            { masu: "しにます", te: "しんで", dir: "DOWN" },
+            
+            // いて/いで (RIGHT)
+            { masu: "かきます", te: "かいて", dir: "RIGHT" },
+            { masu: "ききます", te: "きいて", dir: "RIGHT" },
+            { masu: "はたらきます", te: "はたらいて", dir: "RIGHT" },
+            { masu: "およぎます", te: "およいで", dir: "RIGHT" },
+            { masu: "いそぎます", te: "いそいで", dir: "RIGHT" },
+            
+            // て/して (LEFT)
+            { masu: "はなします", te: "はなして", dir: "LEFT" },
+            { masu: "かします", te: "かして", dir: "LEFT" },
+            { masu: "たべます", te: "たべて", dir: "LEFT" },
+            { masu: "みます", te: "みて", dir: "LEFT" },
+            { masu: "ねます", te: "ねて", dir: "LEFT" },
+            { masu: "します", te: "して", dir: "LEFT" },
+            { masu: "きます", te: "きて", dir: "LEFT" }
+            ];
+            
+            // 効果音
+            const playSound = (type) => {
+                try {
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const osc = ctx.createOscillator();
+                    const gainNode = ctx.createGain();
+                    osc.connect(gainNode);
+                    gainNode.connect(ctx.destination);
+                    
+                    if (type === 'slash') {
+                        // スパッ！という斬撃音
+                        osc.type = 'square';
+                        osc.frequency.setValueAtTime(800, ctx.currentTime);
+                        osc.frequency.exponentialRampToValueAtTime(3000, ctx.currentTime + 0.1);
+                        gainNode.gain.setValueAtTime(0, ctx.currentTime);
+                        gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.01);
+                        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+                        osc.start(ctx.currentTime);
+                        osc.stop(ctx.currentTime + 0.1);
+                    } else if (type === 'wrong') {
+                        // ブブー（ダメージ音）
+                        osc.type = 'sawtooth';
+                        osc.frequency.setValueAtTime(150, ctx.currentTime);
+                        osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.2);
+                        gainNode.gain.setValueAtTime(0, ctx.currentTime);
+                        gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+                        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                        osc.start(ctx.currentTime);
+                        osc.stop(ctx.currentTime + 0.2);
+                    }
+                } catch (e) {}
+            };
+            
+            const App = () => {
+                const [gameState, setGameState] = useState('title'); // title, playing, gameover
+                const [score, setScore] = useState(0);
+                const [life, setLife] = useState(3);
+                const [combo, setCombo] = useState(0);
+                const [isShaking, setIsShaking] = useState(false);
+                const [successCount, setSuccessCount] = useState(0);
+                
+                // 描画用のステート（アニメーション等）
+                const [renderPos, setRenderPos] = useState({ x: 50, y: 110 });
+                const [cutEffect, setCutEffect] = useState(null); // { x, y, dir, te }
+                
+                // 成績ダウンロード用
+                const [playerName, setPlayerName] = useState("");
+                const [isGeneratingImg, setIsGeneratingImg] = useState(false);
+                const resultCardRef = useRef(null);
+                
+                // ゲームロジックを管理するRef
+                const currentWordRef = useRef(null);
+                const posRef = useRef({ x: 50, y: 110 }); // vw, vh
+                const velRef = useRef({ x: 0, y: 0 });
+                const isCutRef = useRef(false);
+                const reqIdRef = useRef(null);
+                const speedMultiplierRef = useRef(1.0); // 難易度（スピード倍率）
+                
+                // スワイプ判定用
+                const touchStartRef = useRef(null);
+                
+                const spawnWord = () => {
+                    const randomWord = WORD_LIST[Math.floor(Math.random() * WORD_LIST.length)];
+                    currentWordRef.current = randomWord;
+                    isCutRef.current = false;
+                    
+                    // 画面下部からスポーン
+                    posRef.current = { x: 40 + Math.random() * 20, y: 110 };
+                    // 基本の速度（非常にゆっくりな設定を維持）
+                    velRef.current = { x: (Math.random() - 0.5) * 0.375, y: -1.375 - Math.random() * 0.125 };
+                    
+                    setCutEffect(null);
+                };
+                
+                const startGame = () => {
+                    setScore(0);
+                    setLife(3);
+                    setCombo(0);
+                    setSuccessCount(0);
+                    speedMultiplierRef.current = 1.0;
+                    setGameState('playing');
+                    spawnWord();
+                };
+                
+                const handleMiss = () => {
+                    playSound('wrong');
+                    setLife(l => {
+                            if (l <= 1) {
+                                setGameState('gameover');
+                                return 0;
+                            }
+                            return l - 1;
+                    });
+                    setCombo(0);
+                    triggerShake();
+                    
+                    // 次の単語をスポーン
+                    if (gameState === 'playing') {
+                        spawnWord();
+                    }
+                };
+                
+                const triggerShake = () => {
+                    setIsShaking(true);
+                    setTimeout(() => setIsShaking(false), 400);
+                };
+                
+                const handleAction = (direction) => {
+                    if (gameState !== 'playing' || !currentWordRef.current || isCutRef.current) return;
+                    
+                    if (currentWordRef.current.dir === direction) {
+                        // 正解！斬撃処理
+                        isCutRef.current = true;
+                        playSound('slash');
+                        setScore(s => s + 100 + (combo * 10));
+                        setCombo(c => c + 1);
+                        
+                        // 斬った数を増やし、5回ごとにスピードアップ（+0.2倍）
+                        setSuccessCount(prev => {
+                                const next = prev + 1;
+                                speedMultiplierRef.current = 1 + Math.floor(next / 5) * 0.2;
+                                return next;
+                        });
+                        
+                        // 斬撃エフェクトとテ形の表示
+                        setCutEffect({
+                                x: posRef.current.x,
+                                y: posRef.current.y,
+                                dir: direction,
+                                te: currentWordRef.current.te,
+                                note: currentWordRef.current.note
+                        });
+                        
+                        // スピード倍率に応じて次が出るまでの待ち時間も少し短くする
+                        const waitTime = Math.max(800 / speedMultiplierRef.current, 300);
+                        setTimeout(() => {
+                                if (gameState === 'playing') spawnWord();
+                        }, waitTime);
+                    } else {
+                        // 不正解（斬る方向を間違えた）
+                        handleMiss();
+                    }
+                };
+                
+                // 画像ダウンロード処理
+                const downloadResult = async () => {
+                    if (!resultCardRef.current || isGeneratingImg) return;
+                    setIsGeneratingImg(true);
+                    try {
+                        const canvas = await window.html2canvas(resultCardRef.current, {
+                                scale: 2,
+                                backgroundColor: "#1e293b", // bg-slate-800 の色
+                                logging: false
+                        });
+                        const image = canvas.toDataURL("image/png");
+                        const safeName = playerName.trim() || "Ninja";
+                        const link = document.createElement("a");
+                        link.download = `Te_Form_Ninja_${safeName}.png`;
+                        link.href = image;
+                        link.click();
+                    } catch (error) {
+                        console.error("Image generation failed:", error);
+                    } finally {
+                        setIsGeneratingImg(false);
+                    }
+                };
+                
+                // ゲームループ (60fps)
+                useEffect(() => {
+                        if (gameState !== 'playing') return;
+                        
+                        let lastTime = performance.now();
+                        const loop = (time) => {
+                            // 倍率(speedMultiplierRef.current)をdtに掛けることで、ゲーム全体の進行スピードをコントロール
+                            const dt = ((time - lastTime) / 16.66) * speedMultiplierRef.current;
+                            lastTime = time;
+                            
+                            if (!isCutRef.current && currentWordRef.current) {
+                                // 重力の適用
+                                velRef.current.y += 0.009375 * dt;
+                                
+                                // 位置の更新
+                                posRef.current.x += velRef.current.x * dt;
+                                posRef.current.y += velRef.current.y * dt;
+                                
+                                // Reactのステートを更新して画面に反映
+                                setRenderPos({ x: posRef.current.x, y: posRef.current.y });
+                                
+                                // 画面下部に落ちたか判定
+                                if (posRef.current.y > 120) {
+                                    handleMiss();
+                                }
+                            }
+                            reqIdRef.current = requestAnimationFrame(loop);
+                        };
+                        reqIdRef.current = requestAnimationFrame(loop);
+                        
+                        return () => cancelAnimationFrame(reqIdRef.current);
+                }, [gameState]); 
+                
+                // キーボード操作の登録
+                useEffect(() => {
+                        const handleKeyDown = (e) => {
+                            if (gameState !== 'playing') return;
+                            switch(e.key) {
+                                case 'ArrowUp': case 'w': case 'W': handleAction('UP'); break;
+                                case 'ArrowDown': case 's': case 'S': handleAction('DOWN'); break;
+                                case 'ArrowRight': case 'd': case 'D': handleAction('RIGHT'); break;
+                                case 'ArrowLeft': case 'a': case 'A': handleAction('LEFT'); break;
+                            }
+                        };
+                        window.addEventListener('keydown', handleKeyDown);
+                        return () => window.removeEventListener('keydown', handleKeyDown);
+                }, [gameState]); 
+                
+                // タッチ（スワイプ）操作
+                const handleTouchStart = (e) => {
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+                    e.preventDefault();
+                    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                };
+                
+                const handleTouchEnd = (e) => {
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+                    if (e.cancelable) e.preventDefault();
+                    if (!touchStartRef.current) return;
+                    
+                    const dx = e.changedTouches[0].clientX - touchStartRef.current.x;
+                    const dy = e.changedTouches[0].clientY - touchStartRef.current.y;
+                    
+                    // スワイプ量が少なすぎる場合は無視
+                    if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return;
+                    
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        if (dx > 0) handleAction('RIGHT');
+                        else handleAction('LEFT');
+                    } else {
+                        if (dy > 0) handleAction('DOWN');
+                        else handleAction('UP');
+                    }
+                    touchStartRef.current = null;
+                };
+                
+                // 斬撃線のCSS角度計算
+                const getSlashRotation = (dir) => {
+                    switch(dir) {
+                        case 'UP': return 'rotate(-90deg)';
+                        case 'DOWN': return 'rotate(90deg)';
+                        case 'LEFT': return 'rotate(180deg)';
+                        case 'RIGHT': return 'rotate(0deg)';
+                        default: return '';
+                    }
+                };
+                
+                return (
+                    <div 
+                    className={`w-full h-screen relative overflow-hidden flex flex-col items-center justify-center ${isShaking ? 'shake bg-red-900/50' : ''}`}
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                    onMouseDown={(e) => { 
+                            if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+                            e.preventDefault(); 
+                            touchStartRef.current = { x: e.clientX, y: e.clientY }; 
+                    }}
+                    onMouseUp={(e) => {
+                            if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+                            if (!touchStartRef.current) return;
+                            const dx = e.clientX - touchStartRef.current.x;
+                            const dy = e.clientY - touchStartRef.current.y;
+                            if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return;
+                            if (Math.abs(dx) > Math.abs(dy)) {
+                                if (dx > 0) handleAction('RIGHT'); else handleAction('LEFT');
+                            } else {
+                                if (dy > 0) handleAction('DOWN'); else handleAction('UP');
+                            }
+                            touchStartRef.current = null;
+                    }}
+                    >
+                    
+                    {/* 背景装飾 */}
+                    <div className="absolute inset-0 opacity-10 pointer-events-none flex items-center justify-center">
+                    <div className="text-[20rem] font-black">斬</div>
+                    </div>
+                    
+                    {/* UIヘッダー */}
+                    <div className="absolute top-0 left-0 w-full p-4 flex justify-between items-start z-20 pointer-events-none">
+                    <div className="flex flex-col">
+                    <span className="text-xl font-black text-yellow-400">
+                    SCORE: {score}
+                    {speedMultiplierRef.current > 1 && (
+                            <span className="text-xs ml-2 text-red-400 tracking-wider">SPEED x{speedMultiplierRef.current.toFixed(1)}</span>
+                    )}
+                    </span>
+                    {combo > 1 && <span className="text-lg font-bold text-orange-400">{combo} COMBO! 🔥</span>}
+                    </div>
+                    <div className="flex gap-1">
+                    {[...Array(3)].map((_, i) => (
+                                <span key={i} className="text-3xl">
+                                {i < life ? '❤️' : '🖤'}
+                                </span>
+                    ))}
+                    </div>
+                    </div>
+                    
+                    {/* 操作ガイド（四隅） */}
+                    <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-white/10 px-4 py-2 rounded-full font-bold backdrop-blur-sm pointer-events-none">
+                    ↑ -tte (W)
+                    </div>
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/10 px-4 py-2 rounded-full font-bold backdrop-blur-sm pointer-events-none">
+                    ↓ -nde (S)
+                    </div>
+                    <div className="absolute top-1/2 left-4 -translate-y-1/2 bg-white/10 px-4 py-2 rounded-full font-bold backdrop-blur-sm pointer-events-none origin-left -rotate-90 md:rotate-0 md:origin-center">
+                    ← -te/-shite (A)
+                    </div>
+                    <div className="absolute top-1/2 right-4 -translate-y-1/2 bg-white/10 px-4 py-2 rounded-full font-bold backdrop-blur-sm pointer-events-none origin-right rotate-90 md:rotate-0 md:origin-center">
+                    → -ite/-ide (D)
+                    </div>
+                    
+                    {/* タイトル画面 */}
+                    {gameState === 'title' && (
+                            <div className="z-30 flex flex-col items-center bg-slate-800/80 p-8 rounded-3xl backdrop-blur-md border border-slate-700 pop-in text-center max-w-sm w-11/12">
+                            <h1 className="text-4xl font-black text-white mb-2 tracking-widest">TE-FORM NINJA</h1>
+                            <p className="text-blue-300 font-bold mb-6">Master the Te-Form</p>
+                            
+                            <div className="text-left bg-slate-900/50 p-4 rounded-xl mb-8 w-full">
+                            <p className="font-bold text-sm mb-2 text-gray-300">📱 Mobile: Swipe to slash</p>
+                            <p className="font-bold text-sm text-gray-300">💻 PC: Arrow keys or WASD</p>
+                            </div>
+                            
+                            <button onClick={startGame} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl text-xl transition-colors shadow-[0_6px_0_0_rgba(30,58,138,1)] active:shadow-none active:translate-y-1">
+                            START GAME
+                            </button>
+                            </div>
+                    )}
+                    
+                    {/* ゲームオーバー画面 */}
+                    {gameState === 'gameover' && (
+                            <div 
+                            ref={resultCardRef}
+                            className="z-30 flex flex-col items-center bg-slate-800/90 p-8 rounded-3xl backdrop-blur-md border border-red-500/50 pop-in text-center max-w-sm w-11/12"
+                            >
+                            <h2 className="text-4xl font-black text-red-500 mb-2">GAME OVER</h2>
+                            <p className="text-gray-300 mb-2 font-bold">Your Score</p>
+                            <p className="text-6xl font-black text-yellow-400 mb-4">{score}</p>
+                            <p className="text-sm font-bold text-gray-400 mb-6">Slashed: {successCount} words</p>
+                            
+                            {/* 名前入力エリア */}
+                            <div className="w-full mb-6">
+                            <label className="block text-xs font-bold text-gray-400 mb-1">Ninja Name</label>
+                            <input 
+                            type="text" 
+                            maxLength="15"
+                            placeholder="Enter your name" 
+                            value={playerName}
+                            onChange={(e) => setPlayerName(e.target.value)}
+                            className="w-full text-center text-2xl font-black text-slate-800 bg-white/90 border-none focus:outline-none rounded-lg p-2"
+                            />
+                            </div>
+                            
+                            {/* ボタンエリア（ダウンロードする画像には含めない） */}
+                            <div data-html2canvas-ignore className="w-full flex flex-col gap-3 mt-2">
+                            <button 
+                            onClick={downloadResult} 
+                            disabled={isGeneratingImg}
+                            className={`w-full text-white font-bold py-4 rounded-xl transition-colors shadow-[0_4px_0_0_rgba(29,78,216,1)] active:shadow-none active:translate-y-1 text-lg flex justify-center items-center gap-2
+                            ${isGeneratingImg ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500'}`}
+                            >
+                            {isGeneratingImg ? "Generating..." : "Save Result as PNG"}
+                            </button>
+                            <button onClick={startGame} className="w-full bg-slate-600 hover:bg-slate-500 text-white font-black py-4 rounded-xl text-xl transition-colors shadow-[0_4px_0_0_rgba(71,85,105,1)] active:shadow-none active:translate-y-1">
+                            RETRY
+                            </button>
+                            </div>
+                            </div>
+                    )}
+                    
+                    {/* 飛び出す単語（ターゲット） */}
+                    {gameState === 'playing' && currentWordRef.current && !isCutRef.current && (
+                            <div 
+                            className="absolute bg-white text-slate-900 px-6 py-3 rounded-2xl font-black text-3xl md:text-4xl shadow-[0_10px_20px_rgba(0,0,0,0.5)] border-4 border-slate-300 pointer-events-none"
+                            style={{ 
+                                    left: `${renderPos.x}vw`, 
+                                    top: `${renderPos.y}vh`, 
+                                    transform: 'translate(-50%, -50%)' 
+                            }}
+                            >
+                            {currentWordRef.current.masu}
+                            </div>
+                    )}
+                    
+                    {/* 斬撃エフェクト＆正解のテ形 */}
+                    {cutEffect && (
+                            <div 
+                            className="absolute pointer-events-none"
+                            style={{ left: `${cutEffect.x}vw`, top: `${cutEffect.y}vh` }}
+                            >
+                            {/* 斬撃の線 */}
+                            <div 
+                            className="slash-effect h-2 w-64 md:w-96 rounded-full"
+                            style={{ transform: `${getSlashRotation(cutEffect.dir)}` }}
+                            ></div>
+                            
+                            {/* 変化したテ形 */}
+                            <div className="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
+                            <div className="text-5xl md:text-6xl font-black text-yellow-300 drop-shadow-[0_0_15px_rgba(253,224,71,0.8)] fade-up-out whitespace-nowrap">
+                            {cutEffect.te}
+                            </div>
+                            {cutEffect.note && (
+                                    <div className="text-red-400 font-bold text-xl fade-up-out mt-2">{cutEffect.note}</div>
+                            )}
+                            </div>
+                            </div>
+                    )}
+                    
+                    </div>
+                );
+            };
+            
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+        </script>
+    </body>
+</html>

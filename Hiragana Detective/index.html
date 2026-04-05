@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hiragana Detective</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap');
+        .kyokasho-font { font-family: 'Klee One', serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-12px) rotate(-2deg); }
+            75% { transform: translateX(12px) rotate(2deg); }
+        }
+        .animate-shake { animation: shake 0.2s ease-in-out; }
+        
+        @keyframes flashGreen {
+            0% { box-shadow: inset 0 0 50px rgba(74, 222, 128, 0.8); border-color: #4ade80; }
+            100% { box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.5); border-color: #334155; }
+        }
+        .animate-flash-green { animation: flashGreen 0.5s ease-out; }
+
+        body {
+            background-color: #020617; /* slate-950 */
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none; /* スマホでのスクロール防止 */
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+        // --- Lucide Icon Component Helper ---
+        const Icon = ({ name, size = 24, className = "", fill = "none" }) => {
+            const iconData = useMemo(() => {
+                if (!window.lucide || !lucide.icons) return null;
+                const key = name.charAt(0).toLowerCase() + name.slice(1);
+                return lucide.icons[key] || lucide.icons[name] || lucide.icons[name.toLowerCase()];
+            }, [name]);
+
+            if (!iconData) return <span className={className} style={{ width: size, height: size, display: 'inline-block' }} />;
+
+            return (
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width={size}
+                    height={size}
+                    viewBox="0 0 24 24"
+                    fill={fill}
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={className}
+                    dangerouslySetInnerHTML={{
+                        __html: iconData.map(([tag, attrs]) => {
+                            const attrStr = Object.entries(attrs)
+                                .map(([k, v]) => `${k}="${v}"`)
+                                .join(" ");
+                            return `<${tag} ${attrStr} />`;
+                        }).join("")
+                    }}
+                />
+            );
+        };
+
+        // --- 似ているひらがなのペア ---
+        const PAIRS = [
+            { target: 'め', dummy: 'ぬ' }, { target: 'ぬ', dummy: 'め' },
+            { target: 'は', dummy: 'ほ' }, { target: 'ほ', dummy: 'は' },
+            { target: 'わ', dummy: 'れ' }, { target: 'れ', dummy: 'わ' },
+            { target: 'ね', dummy: 'れ' }, { target: 'れ', dummy: 'ね' },
+            { target: 'ね', dummy: 'わ' }, { target: 'わ', dummy: 'ね' },
+            { target: 'い', dummy: 'り' }, { target: 'り', dummy: 'い' },
+            { target: 'き', dummy: 'さ' }, { target: 'さ', dummy: 'き' },
+            { target: 'ち', dummy: 'ら' }, { target: 'ら', dummy: 'ち' },
+            { target: 'る', dummy: 'ろ' }, { target: 'ろ', dummy: 'る' },
+            { target: 'あ', dummy: 'お' }, { target: 'お', dummy: 'あ' },
+            { target: 'ま', dummy: 'も' }, { target: 'も', dummy: 'ま' },
+            { target: 'た', dummy: 'だ' }, { target: 'だ', dummy: 'た' },
+            { target: 'は', dummy: 'ば' }, { target: 'ば', dummy: 'ぱ' },
+        ];
+
+        // --- SE Logic ---
+        const playSE = (audioCtx, type) => {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            if (type === 'hit') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(2000, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+            } else if (type === 'finish') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+                osc.frequency.setValueAtTime(600, audioCtx.currentTime + 0.1);
+                osc.frequency.setValueAtTime(800, audioCtx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.6);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.6);
+            }
+            osc.connect(gain); gain.connect(audioCtx.destination);
+        };
+
+        // --- Main App ---
+        function App() {
+            const [gameState, setGameState] = useState('title'); // 'title', 'playing', 'result'
+            const [userName, setUserName] = useState(''); // 探偵の名前
+            const [level, setLevel] = useState(1);
+            const [score, setScore] = useState(0);
+            const [timeLeft, setTimeLeft] = useState(20);
+            const [currentPair, setCurrentPair] = useState(null);
+            const [chars, setChars] = useState([]);
+            
+            const [isWrong, setIsWrong] = useState(false);
+            const [isLevelClear, setIsLevelClear] = useState(false);
+            
+            const containerRef = useRef(null);
+            const charsRef = useRef([]);
+            const audioCtxRef = useRef(null);
+
+            const MAX_TIME = 20;
+            const CHAR_SIZE = 56; // 14rem (w-14 h-14) = 56px
+
+            const speak = useCallback((text, rate = 1.0) => {
+                if (!('speechSynthesis' in window)) return;
+                window.speechSynthesis.cancel();
+                const uttr = new SpeechSynthesisUtterance(text);
+                uttr.lang = 'ja-JP';
+                uttr.rate = rate;
+                window.speechSynthesis.speak(uttr);
+            }, []);
+
+            const initAudio = () => {
+                if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+            };
+
+            const initLevel = useCallback((lvl) => {
+                const pair = PAIRS[Math.floor(Math.random() * PAIRS.length)];
+                setCurrentPair(pair);
+                
+                // レベルに応じてダミーの数とスピードを上げる（難易度上昇をマイルドに調整）
+                const dummyCount = Math.floor(Math.min(10 + lvl * 1.5, 40)); 
+                const speed = Math.min(1.0 + lvl * 0.15, 4);
+                
+                const container = containerRef.current;
+                // コンテナがまだ無い場合は画面サイズから推測
+                const width = container ? container.clientWidth : window.innerWidth * 0.9;
+                const height = container ? container.clientHeight : window.innerHeight * 0.6;
+                
+                const newChars = [];
+                
+                // ターゲット（1つだけ）
+                newChars.push({
+                    id: 'target',
+                    char: pair.target,
+                    isTarget: true,
+                    x: Math.random() * (width - CHAR_SIZE),
+                    y: Math.random() * (height - CHAR_SIZE),
+                    vx: (Math.random() < 0.5 ? 1 : -1) * speed * (0.8 + Math.random() * 0.4),
+                    vy: (Math.random() < 0.5 ? 1 : -1) * speed * (0.8 + Math.random() * 0.4),
+                    el: null
+                });
+                
+                // ダミー（複数）
+                for(let i = 0; i < dummyCount; i++) {
+                    newChars.push({
+                        id: `dummy-${i}`,
+                        char: pair.dummy,
+                        isTarget: false,
+                        x: Math.random() * (width - CHAR_SIZE),
+                        y: Math.random() * (height - CHAR_SIZE),
+                        vx: (Math.random() < 0.5 ? 1 : -1) * speed * (0.5 + Math.random() * 0.8),
+                        vy: (Math.random() < 0.5 ? 1 : -1) * speed * (0.5 + Math.random() * 0.8),
+                        el: null
+                    });
+                }
+                
+                charsRef.current = newChars;
+                setChars([...newChars]); // Reactの再レンダリングをトリガーしてDOMを生成
+                
+                setTimeout(() => {
+                    speak(pair.target);
+                }, 300);
+            }, [speak]);
+
+            const startGame = () => {
+                initAudio();
+                setLevel(1);
+                setScore(0);
+                setTimeLeft(MAX_TIME);
+                setGameState('playing');
+                // DOM描画待ち
+                setTimeout(() => initLevel(1), 50);
+            };
+
+            const handleCharClick = (e, charObj) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (gameState !== 'playing') return;
+                
+                if (charObj.isTarget) {
+                    // 正解
+                    playSE(audioCtxRef.current, 'hit');
+                    setScore(s => s + 100 + level * 10);
+                    setLevel(l => l + 1);
+                    setTimeLeft(t => Math.min(MAX_TIME, t + 5)); // 5秒回復
+                    
+                    setIsLevelClear(true);
+                    setTimeout(() => setIsLevelClear(false), 500);
+                    
+                    initLevel(level + 1);
+                } else {
+                    // 不正解
+                    playSE(audioCtxRef.current, 'error');
+                    setTimeLeft(t => Math.max(0, t - 2)); // 2秒ペナルティ
+                    setIsWrong(true);
+                    setTimeout(() => setIsWrong(false), 300);
+                }
+            };
+
+            // アニメーションループ（移動処理）
+            useEffect(() => {
+                let animationId;
+                let lastTime = performance.now();
+
+                const loop = (time) => {
+                    const deltaTime = time - lastTime;
+                    lastTime = time;
+
+                    if (gameState === 'playing' && containerRef.current) {
+                        const rect = containerRef.current.getBoundingClientRect();
+                        
+                        charsRef.current.forEach(c => {
+                            // フレームレートに依存しない移動量の計算（簡易）
+                            const timeScale = deltaTime / 16.66; // 60fpsを基準(1.0)とする
+                            c.x += c.vx * timeScale;
+                            c.y += c.vy * timeScale;
+                            
+                            // 壁でのバウンド判定
+                            if (c.x <= 0) { c.x = 0; c.vx *= -1; }
+                            else if (c.x >= rect.width - CHAR_SIZE) { c.x = rect.width - CHAR_SIZE; c.vx *= -1; }
+                            
+                            if (c.y <= 0) { c.y = 0; c.vy *= -1; }
+                            else if (c.y >= rect.height - CHAR_SIZE) { c.y = rect.height - CHAR_SIZE; c.vy *= -1; }
+                            
+                            // DOMの直接更新（Reactを介さないため高速）
+                            if (c.el) {
+                                c.el.style.transform = `translate(${c.x}px, ${c.y}px)`;
+                            }
+                        });
+                    }
+                    animationId = requestAnimationFrame(loop);
+                };
+                
+                animationId = requestAnimationFrame(loop);
+                return () => cancelAnimationFrame(animationId);
+            }, [gameState]);
+
+            // タイマー管理
+            useEffect(() => {
+                let timerId;
+                if (gameState === 'playing') {
+                    timerId = setInterval(() => {
+                        setTimeLeft(prev => {
+                            const next = prev - 0.1;
+                            if (next <= 0) {
+                                setGameState('result');
+                                playSE(audioCtxRef.current, 'finish');
+                                return 0;
+                            }
+                            return next;
+                        });
+                    }, 100);
+                }
+                return () => clearInterval(timerId);
+            }, [gameState]);
+
+            // 成績表(ライセンス)ダウンロード機能
+            const downloadCertificate = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 800;
+                canvas.height = 600;
+                const ctx = canvas.getContext('2d');
+
+                // 背景を塗る
+                ctx.fillStyle = '#f0f9ff'; // sky-50
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // 枠線を描く
+                ctx.strokeStyle = '#38bdf8'; // sky-400
+                ctx.lineWidth = 15;
+                ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+                ctx.strokeStyle = '#bae6fd'; // sky-200
+                ctx.lineWidth = 5;
+                ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80);
+
+                // テキストを描く
+                ctx.fillStyle = '#0284c7'; // sky-600
+                ctx.font = 'bold 50px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Official Detective License', canvas.width / 2, 120);
+
+                ctx.fillStyle = '#475569'; // slate-600
+                ctx.font = '30px sans-serif';
+                ctx.fillText('This certifies that', canvas.width / 2, 220);
+
+                // ユーザー名
+                ctx.fillStyle = '#0ea5e9'; // sky-500
+                ctx.font = 'bold 60px sans-serif';
+                ctx.fillText(userName || 'Detective', canvas.width / 2, 310);
+
+                ctx.fillStyle = '#475569';
+                ctx.font = '30px sans-serif';
+                ctx.fillText('has proven excellent observation skills in', canvas.width / 2, 400);
+                
+                ctx.fillStyle = '#0369a1'; // sky-700
+                ctx.font = 'bold 45px sans-serif';
+                ctx.fillText('Hiragana Detective!', canvas.width / 2, 460);
+
+                // スコアとレベル
+                ctx.fillStyle = '#f59e0b'; // amber-500
+                ctx.font = 'bold 30px sans-serif';
+                ctx.fillText(`Score: ${score}   Level: ${level}`, canvas.width / 2, 530);
+
+                // 日付
+                const date = new Date().toLocaleDateString();
+                ctx.fillStyle = '#64748b'; // slate-500
+                ctx.font = '24px sans-serif';
+                ctx.fillText(`Date: ${date}`, canvas.width / 2, 580);
+
+                // ダウンロードの実行
+                const url = canvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${userName || 'Detective'}_Hiragana_License.png`;
+                a.click();
+            };
+
+            // --- Views ---
+            const renderTitleScreen = () => (
+                <div className="flex flex-col items-center justify-center h-full text-white p-6 text-center animate-in fade-in duration-500">
+                    <div className="relative mb-8">
+                        <div className="absolute inset-0 bg-sky-600 blur-[100px] opacity-50 animate-pulse"></div>
+                        <Icon name="Search" size={120} className="text-sky-400 relative z-10 drop-shadow-[0_0_30px_rgba(56,189,248,0.8)]" />
+                    </div>
+                    <h1 className="text-6xl md:text-8xl font-black italic mb-4 tracking-tighter leading-none">
+                        HIRAGANA <br/> <span className="text-sky-400">DETECTIVE</span>
+                    </h1>
+                    <p className="text-slate-400 font-mono tracking-[0.5em] mb-10 text-sm md:text-base uppercase bg-slate-900/50 py-2 px-6 rounded-full border border-slate-800">
+                        Spot the Fake. Catch the Target.
+                    </p>
+
+                    <div className="flex flex-col items-center gap-4 w-full max-w-sm">
+                        <input 
+                            type="text" 
+                            placeholder="Enter your detective name" 
+                            value={userName}
+                            onChange={(e) => setUserName(e.target.value)}
+                            className="w-full text-center text-xl p-4 bg-slate-800 text-white border-2 border-sky-400/50 rounded-2xl focus:outline-none focus:border-sky-400 transition shadow-inner placeholder-slate-500"
+                        />
+                        <button 
+                            onClick={startGame}
+                            disabled={!userName.trim()}
+                            className={`w-full py-5 text-2xl font-black rounded-2xl transition-all transform flex items-center justify-center gap-3 shadow-lg
+                                ${!userName.trim() 
+                                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed border-2 border-slate-700' 
+                                    : 'bg-sky-500 text-white hover:bg-sky-400 hover:scale-105 active:scale-95 shadow-[0_0_30px_rgba(56,189,248,0.4)]'}`}
+                        >
+                            <Icon name="Play" size={28} /> START INVESTIGATION
+                        </button>
+                    </div>
+                </div>
+            );
+
+            const renderGameScreen = () => (
+                <div className="flex flex-col h-full bg-[#020617] text-white">
+                    {/* ヘッダーエリア */}
+                    <div className="flex flex-col md:flex-row justify-between items-center p-4 bg-slate-900/80 border-b border-slate-800 backdrop-blur-md gap-4 z-20">
+                        <div className="flex justify-between w-full md:w-auto gap-8">
+                            <div className="flex items-center gap-2">
+                                <Icon name="Target" className="text-sky-400" />
+                                <div className="text-xl font-black text-sky-400">Lv. {level}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Icon name="Trophy" className="text-yellow-400" />
+                                <div className="text-xl font-black text-yellow-400">{score}</div>
+                            </div>
+                        </div>
+
+                        {/* タイムバー */}
+                        <div className="w-full flex-1 max-w-lg flex items-center gap-3">
+                            <Icon name="Clock" size={20} className={timeLeft < 5 ? "text-red-500 animate-pulse" : "text-slate-400"} />
+                            <div className="h-4 w-full bg-slate-800 rounded-full overflow-hidden border border-slate-700 shadow-inner">
+                                <div 
+                                    className={`h-full transition-all duration-100 ${timeLeft < 5 ? 'bg-red-500 animate-pulse' : 'bg-sky-500'}`} 
+                                    style={{ width: `${Math.max(0, (timeLeft / MAX_TIME) * 100)}%` }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ターゲット指示エリア */}
+                    <div className="flex justify-center items-center gap-6 py-6 z-20">
+                        <button 
+                            onClick={() => speak(currentPair?.target)} 
+                            className="p-4 bg-slate-800 rounded-full hover:bg-slate-700 transition active:scale-90 border-2 border-slate-700 shadow-lg"
+                        >
+                            <Icon name="Volume2" size={32} className="text-sky-400" />
+                        </button>
+                        <div className="flex items-center gap-4 bg-slate-900/80 px-8 py-3 rounded-full border-2 border-slate-700 shadow-[0_0_20px_rgba(0,0,0,0.5)]">
+                            <span className="text-xl md:text-2xl font-bold text-slate-400 uppercase tracking-widest">Find</span>
+                            <span className="text-5xl md:text-6xl text-pink-400 kyokasho-font font-bold drop-shadow-[0_0_10px_rgba(244,63,94,0.6)]">
+                                {currentPair?.target}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* ゲームフィールド (文字が動くエリア) */}
+                    <div 
+                        className={`flex-1 relative m-4 mt-0 bg-[#0f172a] rounded-3xl border-4 overflow-hidden transition-all duration-200 
+                            ${isWrong ? 'border-red-600 animate-shake shadow-[inset_0_0_80px_rgba(220,38,38,0.4)]' : 
+                              isLevelClear ? 'animate-flash-green' : 'border-slate-700 shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]'}`}
+                        ref={containerRef}
+                    >
+                        {chars.map((c, i) => (
+                            <div
+                                key={c.id}
+                                ref={el => { if (charsRef.current[i]) charsRef.current[i].el = el; }}
+                                className={`absolute w-14 h-14 flex items-center justify-center text-4xl font-bold rounded-full bg-white text-slate-900 kyokasho-font cursor-pointer select-none shadow-[0_4px_10px_rgba(0,0,0,0.5)] transform active:scale-75 active:bg-slate-200
+                                    ${c.isTarget ? 'z-10' : 'z-0'}`}
+                                onPointerDown={(e) => handleCharClick(e, c)}
+                            >
+                                {c.char}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+
+            const renderResultScreen = () => (
+                <div className="flex flex-col items-center justify-center h-full text-white bg-[#020617] p-6 text-center animate-in fade-in duration-500">
+                    <Icon name="Award" size={120} className="text-yellow-400 mb-6 animate-pulse drop-shadow-[0_0_30px_rgba(250,204,21,0.8)]" />
+                    <h2 className="text-6xl md:text-7xl font-black mb-4 italic tracking-tighter text-sky-400 uppercase">Investigation<br/>Complete</h2>
+                    
+                    <p className="text-slate-400 mb-8 text-xl font-medium">Excellent work, Detective <span className="text-white font-bold">{userName}</span>!</p>
+                    
+                    <div className="bg-slate-900 p-8 rounded-3xl border-2 border-slate-800 mb-10 shadow-2xl w-full max-w-md">
+                        <div className="text-slate-400 text-sm md:text-base mb-2 font-bold uppercase tracking-widest">Final Score</div>
+                        <div className="text-7xl font-black text-yellow-400 mb-6">{score}</div>
+                        <div className="text-slate-500 font-bold text-lg">Reached Level <span className="text-white text-3xl ml-2">{level}</span></div>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
+                        <button 
+                            onClick={downloadCertificate}
+                            className="flex-1 py-4 bg-sky-600 text-white font-black text-lg rounded-2xl hover:bg-sky-500 transition shadow-[0_0_20px_rgba(2,132,199,0.5)] flex items-center justify-center gap-2 active:scale-95"
+                        >
+                            <Icon name="Download" size={24} /> GET LICENSE
+                        </button>
+                        <button 
+                            onClick={startGame}
+                            className="flex-1 py-4 bg-slate-800 text-white font-black text-lg rounded-2xl hover:bg-slate-700 transition shadow-lg flex items-center justify-center gap-2 active:scale-95 border border-slate-700"
+                        >
+                            <Icon name="RotateCcw" size={24} /> PLAY AGAIN
+                        </button>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="w-full h-screen bg-slate-950 font-sans">
+                    {gameState === 'title' && renderTitleScreen()}
+                    {gameState === 'playing' && renderGameScreen()}
+                    {gameState === 'result' && renderResultScreen()}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
