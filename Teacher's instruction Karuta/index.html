@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher's Instruction Karuta</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+      const { useState, useEffect, useRef, useCallback, useMemo } = React;
+      
+      // --- Lucide Icon Component Helper ---
+      const Icon = ({ name, size = 24, className = "", fill = "none" }) => {
+        const iconData = useMemo(() => {
+            if (!window.lucide || !lucide.icons) return null;
+            const key = name.charAt(0).toLowerCase() + name.slice(1);
+            return lucide.icons[key] || lucide.icons[name] || lucide.icons[name.toLowerCase()];
+        }, [name]);
+        
+        if (!iconData) return <span className={className} style={{ width: size, height: size, display: 'inline-block' }} />;
+        
+        return (
+          <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill={fill}
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={className}
+          dangerouslySetInnerHTML={{
+              __html: iconData.map(([tag, attrs]) => {
+                  const attrStr = Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(" ");
+                  return `<${tag} ${attrStr} />`;
+              }).join("")
+          }}
+          />
+        );
+      };
+      
+      // --- 教室の言葉データ ---
+      const EXPRESSIONS = [
+      { id: 'kiite', text: 'きいてください', romaji: 'Kiite kudasai', situation: 'Please listen', icon: 'Ear', color: 'text-rose-500', bg: 'bg-rose-100', border: 'border-rose-300' },
+      { id: 'kaite', text: 'かいてください', romaji: 'Kaite kudasai', situation: 'Please write', icon: 'Pencil', color: 'text-emerald-500', bg: 'bg-emerald-100', border: 'border-emerald-300' },
+      { id: 'yonde', text: 'よんでください', romaji: 'Yonde kudasai', situation: 'Please read', icon: 'BookOpen', color: 'text-indigo-500', bg: 'bg-indigo-100', border: 'border-indigo-300' },
+      { id: 'hanashite', text: 'ペアで はなしてください', romaji: 'Pea de hanashite kudasai', situation: 'Please talk in pairs', icon: 'Users', color: 'text-amber-500', bg: 'bg-amber-100', border: 'border-amber-300' },
+      { id: 'itte', text: 'いってください', romaji: 'Itte kudasai', situation: 'Please say it', icon: 'MessageCircle', color: 'text-sky-500', bg: 'bg-sky-100', border: 'border-sky-300' },
+      { id: 'mite', text: 'みてください', romaji: 'Mite kudasai', situation: 'Please look', icon: 'Eye', color: 'text-blue-500', bg: 'bg-blue-100', border: 'border-blue-300' },
+      { id: 'akete', text: '5ページを あけてください', romaji: 'Go-peeji o akete kudasai', situation: 'Please open page 5', icon: 'Book', color: 'text-purple-500', bg: 'bg-purple-100', border: 'border-purple-300' }
+      ];
+      
+      // --- 効果音 ---
+      const playSE = (audioCtx, type) => {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        if (type === 'correct') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+          osc.frequency.setValueAtTime(1200, audioCtx.currentTime + 0.1);
+          gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+          osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+        } else if (type === 'incorrect') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+          osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+        }
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+      };
+      
+      // --- 音声合成 (TTS) ---
+      const speak = (text) => {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const msg = new SpeechSynthesisUtterance(text);
+          msg.lang = 'ja-JP';
+          msg.rate = 0.9;
+          const voices = window.speechSynthesis.getVoices();
+          const googleJaVoice = voices.find(v => v.lang.includes('ja') && v.name.toLowerCase().includes('google'));
+          if (googleJaVoice) msg.voice = googleJaVoice;
+          window.speechSynthesis.speak(msg);
+        }
+      };
+      
+      const shuffleArray = (array) => {
+        const newArr = [...array];
+        for (let i = newArr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+        }
+        return newArr;
+      };
+      
+      function ClassroomKarutaApp() {
+        const [gameState, setGameState] = useState('title'); // 'title', 'playing', 'result'
+        const [score, setScore] = useState(0);
+        const [timeLeft, setTimeLeft] = useState(60);
+        
+        const [cards, setCards] = useState([]);
+        const [targetId, setTargetId] = useState(null);
+        const [showAnswer, setShowAnswer] = useState(false);
+        const [wrongCardId, setWrongCardId] = useState(null);
+        
+        const audioCtxRef = useRef(null);
+        const bagRef = useRef([]); // ランダム出題用のバッグ
+        
+        // 初回TTS初期化
+        useEffect(() => {
+            if ('speechSynthesis' in window) {
+              window.speechSynthesis.getVoices();
+              window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+            }
+        }, []);
+        
+        const initAudio = () => {
+          if (!audioCtxRef.current) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtxRef.current = new AudioContext();
+          }
+          if (audioCtxRef.current.state === 'suspended') {
+            audioCtxRef.current.resume();
+          }
+        };
+        
+        const generateTurn = useCallback(() => {
+            // バッグが空になったら、全カードをシャッフルして補充
+            if (bagRef.current.length === 0) {
+              bagRef.current = shuffleArray(EXPRESSIONS);
+            }
+            
+            // バッグからターゲット（正解）を1枚取り出す
+            const target = bagRef.current.pop();
+            
+            // ターゲット以外のカードからダミーを5枚選ぶ
+            const remainingCards = EXPRESSIONS.filter(g => g.id !== target.id);
+            const shuffledRemaining = shuffleArray(remainingCards);
+            const dummies = shuffledRemaining.slice(0, 5);
+            
+            // ターゲットとダミーを合わせてシャッフルし、画面に表示する6枚にする
+            const selectedCards = shuffleArray([target, ...dummies]);
+            
+            setCards(selectedCards);
+            setTargetId(target.id);
+            setShowAnswer(false);
+            setWrongCardId(null);
+            
+            // ターゲットの音声を再生
+            setTimeout(() => {
+                speak(target.text);
+            }, 300);
+        }, []);
+        
+        const startGame = () => {
+          initAudio();
+          setScore(0);
+          setTimeLeft(60);
+          bagRef.current = []; // ゲーム開始時にバッグをリセット
+          setGameState('playing');
+          generateTurn();
+        };
+        
+        // タイマー処理
+        useEffect(() => {
+            let timer;
+            if (gameState === 'playing') {
+              timer = setInterval(() => {
+                  setTimeLeft(prev => {
+                      if (prev <= 1) {
+                        setGameState('result');
+                        return 0;
+                      }
+                      return prev - 1;
+                  });
+              }, 1000);
+            }
+            return () => clearInterval(timer);
+        }, [gameState]);
+        
+        const handleCardClick = (card) => {
+          if (showAnswer || gameState !== 'playing') return;
+          
+          if (card.id === targetId) {
+            // 正解
+            playSE(audioCtxRef.current, 'correct');
+            setScore(s => s + 10);
+            setShowAnswer(true);
+            
+            // 1.5秒後に次のターンへ
+            setTimeout(() => {
+                if (gameState === 'playing') {
+                  generateTurn();
+                }
+            }, 1500);
+          } else {
+            // 不正解
+            playSE(audioCtxRef.current, 'incorrect');
+            setScore(s => Math.max(0, s - 5));
+            setWrongCardId(card.id);
+            setTimeout(() => setWrongCardId(null), 500); // 震えるアニメーションをリセット
+          }
+        };
+        
+        const replayAudio = () => {
+          const target = EXPRESSIONS.find(g => g.id === targetId);
+          if (target) speak(target.text);
+        };
+        
+        // --- Views ---
+        
+        const TitleScreen = () => (
+          <div className="flex flex-col items-center justify-center h-full p-6 text-center animate-in fade-in duration-500">
+          <div className="bg-white p-10 rounded-3xl shadow-2xl border-4 border-indigo-200 max-w-lg w-full flex flex-col items-center">
+          <div className="flex justify-center gap-6 mb-6">
+          <Icon name="BookOpen" size={48} className="text-indigo-500 animate-pulse" />
+          <Icon name="MessageCircle" size={48} className="text-pink-500 animate-bounce" />
+          </div>
+          <h1 className="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-sky-500 mb-4 tracking-tight leading-tight">
+          Teacher's<br/>Instruction Karuta
+          </h1>
+          <p className="text-slate-600 font-medium mb-8">
+          Listen to the expression and tap the matching situation card!
+          </p>
+          <button 
+          onClick={startGame}
+          className="w-full py-5 text-2xl font-black rounded-2xl bg-indigo-500 text-white hover:bg-indigo-400 transition-all transform hover:scale-105 active:scale-95 shadow-lg flex items-center justify-center gap-3"
+          >
+          <Icon name="Play" size={28} /> Let's Play!
+          </button>
+          </div>
+          </div>
+        );
+        
+        const GameScreen = () => {
+          const targetCard = EXPRESSIONS.find(g => g.id === targetId);
+          
+          return (
+            <div className="flex flex-col h-full bg-slate-50 w-full max-w-4xl mx-auto">
+            {/* ヘッダー */}
+            <div className="flex justify-between items-center p-4 bg-white shadow-sm z-10">
+            <div className="flex items-center gap-2 bg-indigo-100 text-indigo-600 px-4 py-2 rounded-full font-bold">
+            <Icon name="Trophy" size={20} />
+            <span>Score: {score}</span>
+            </div>
+            
+            <button 
+            onClick={replayAudio}
+            className="flex items-center gap-2 bg-sky-100 hover:bg-sky-200 text-sky-600 px-6 py-3 rounded-full font-bold transition active:scale-95 shadow-sm"
+            >
+            <Icon name="Volume2" size={24} /> Listen Again
+            </button>
+            
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold ${timeLeft <= 10 ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-slate-100 text-slate-600'}`}>
+            <Icon name="Clock" size={20} />
+            <span>{timeLeft}s</span>
+            </div>
+            </div>
+            
+            {/* カルタの場 */}
+            <div className="flex-1 p-4 md:p-6 overflow-y-auto">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 h-full content-start">
+            {cards.map((card, index) => {
+                  const isTarget = card.id === targetId;
+                  const isWrong = card.id === wrongCardId;
+                  
+                  // 正解時のハイライト状態
+                  const isRevealed = showAnswer && isTarget;
+                  const isDimmed = showAnswer && !isTarget;
+                  
+                  return (
+                    <button
+                    key={card.id}
+                    onClick={() => handleCardClick(card)}
+                    disabled={showAnswer}
+                    className={`
+                      relative flex flex-col items-center justify-center p-6 rounded-2xl border-4 shadow-md transition-all duration-300 aspect-square
+                      ${isDimmed ? 'opacity-30 scale-95 grayscale' : 'opacity-100 hover:shadow-xl hover:-translate-y-1'}
+                      ${isRevealed ? 'scale-105 z-10 border-green-400 shadow-[0_0_30px_rgba(74,222,128,0.5)]' : card.bg + ' ' + card.border}
+                      ${isWrong ? 'animate-[shake_0.2s_ease-in-out]' : ''}
+                      active:scale-95
+                    `}
+                    >
+                    {/* 授業用に選択肢のアルファベットを左肩に表示 */}
+                    <div className="absolute top-2 left-3 md:top-3 md:left-4 text-xl md:text-2xl font-bold text-slate-500/50 font-sans pointer-events-none">
+                    {['a', 'b', 'c', 'd', 'e', 'f'][index]}
+                    </div>
+                    
+                    {/* カードのイラスト（絵札） */}
+                    <div className={`transition-all duration-300 flex flex-col items-center w-full ${isRevealed ? 'scale-75 -translate-y-6 opacity-50' : 'scale-100'}`}>
+                    <Icon name={card.icon} size={56} className={`${card.color} mb-3`} />
+                    <div className="font-bold text-slate-600 text-[13px] md:text-[15px] leading-tight text-center break-words w-full px-2">
+                    {card.situation}
+                    </div>
+                    </div>
+                    
+                    {/* 正解した時だけ浮かび上がる日本語（読み札の情報） */}
+                    {isRevealed && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 animate-in zoom-in duration-300">
+                        <span className={`font-bold text-slate-800 kyokasho-font mb-2 leading-tight text-center ${card.text.length > 10 ? 'text-lg md:text-xl' : 'text-2xl md:text-3xl'}`}>
+                        {card.text}
+                        </span>
+                        <span className="text-[11px] md:text-xs font-bold text-slate-500 bg-white/90 px-3 py-1 rounded-full text-center">
+                        {card.romaji}
+                        </span>
+                        </div>
+                    )}
+                    
+                    {/* 不正解のバツ印 */}
+                    {isWrong && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-red-500/20 rounded-xl">
+                        <Icon name="X" size={80} className="text-red-500" />
+                        </div>
+                    )}
+                    </button>
+                  );
+            })}
+            </div>
+            </div>
+            </div>
+          );
+        };
+        
+        const ResultScreen = () => (
+          <div className="flex flex-col items-center justify-center h-full p-6 text-center animate-in zoom-in duration-500 w-full max-w-md mx-auto">
+          <div className="bg-white p-10 rounded-3xl shadow-2xl border-4 border-indigo-200 w-full flex flex-col items-center">
+          <Icon name="Trophy" size={80} className="text-yellow-400 mb-6 drop-shadow-md" />
+          <h2 className="text-4xl font-extrabold text-slate-800 mb-2">Time's Up!</h2>
+          <p className="text-slate-500 mb-8">You successfully matched the classroom expressions!</p>
+          
+          <div className="bg-indigo-50 w-full p-6 rounded-2xl border border-indigo-100 mb-8">
+          <div className="text-indigo-500 font-bold uppercase tracking-widest text-sm mb-2">Final Score</div>
+          <div className="text-6xl font-black text-indigo-600">{score}</div>
+          </div>
+          
+          <button 
+          onClick={startGame}
+          className="w-full py-4 text-xl font-bold rounded-2xl bg-sky-500 text-white hover:bg-sky-400 transition-all transform active:scale-95 shadow-lg flex items-center justify-center gap-2"
+          >
+          <Icon name="RotateCcw" size={24} /> Play Again
+          </button>
+          </div>
+          </div>
+          );
+          
+          return (
+          <div className="h-screen bg-slate-100 font-sans overflow-hidden select-none touch-none">
+          <style dangerouslySetInnerHTML={{__html: `
+          @import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap');
+          .kyokasho-font { font-family: 'Klee One', serif; }
+          @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px) rotate(-2deg); }
+            75% { transform: translateX(5px) rotate(2deg); }
+          }
+      `}} />
+      
+      {gameState === 'title' && <TitleScreen />}
+      {gameState === 'playing' && <GameScreen />}
+      {gameState === 'result' && <ResultScreen />}
+      </div>
+    );
+  }
+  
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(<ClassroomKarutaApp />);
+</script>
+</body>
+</html>
