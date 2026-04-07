@@ -4,31 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Role-play Generator</title>
-    
-    <!-- Tailwind CSS -->
+
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- Babel for in-browser JSX compilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
-    
+
     <style>
       .font-kyokasho { font-family: 'Klee One', 'UD Digi Kyokasho N-R', 'Yu Mincho', serif; }
       .font-ui { font-family: 'Noto Sans JP', sans-serif; }
+      .record-hide-blur { filter: blur(6px); }
+      .record-hide-blur-soft { filter: blur(5px); }
     </style>
   </head>
   <body class="bg-slate-50 font-ui text-slate-800">
     <div id="root"></div>
-    
+
     <script type="text/babel">
       const { useState, useEffect, useRef } = React;
-      
+
       const parseScript = (scriptText) => {
         const lines = scriptText.split('\n');
         const dialogs = [];
@@ -36,26 +31,32 @@
         let currentDialog = null;
         let idCounter = 0;
         let nextSpeaker = 'A';
-        
+        const narrationRegex = /^【(.+?)】$/;
+
         const prefixRegex = /^([a-zA-Zａ-ｚＡ-Ｚ0-9]+)[:：]/;
         const hasPrefixes = /^([a-zA-Zａ-ｚＡ-Ｚ0-9]+)[:：]/m.test(scriptText);
         const hasBlankLines = /\n\s*\n/.test(scriptText);
-        
+
         if (!hasPrefixes && !hasBlankLines) {
           for (const line of lines) {
             const trimmed = line.trim();
             if (trimmed) {
-              dialogs.push({ id: idCounter++, speaker: nextSpeaker, text: trimmed, subTexts: [] });
-              speakerSet.add(nextSpeaker);
-              nextSpeaker = nextSpeaker === 'A' ? 'B' : 'A';
+              const narrationMatch = trimmed.match(narrationRegex);
+              if (narrationMatch) {
+                dialogs.push({ id: idCounter++, type: 'narration', speaker: '', text: narrationMatch[1].trim(), subTexts: [] });
+              } else {
+                dialogs.push({ id: idCounter++, speaker: nextSpeaker, text: trimmed, subTexts: [] });
+                speakerSet.add(nextSpeaker);
+                nextSpeaker = nextSpeaker === 'A' ? 'B' : 'A';
+              }
             }
           }
           return { dialogs, speakers: Array.from(speakerSet) };
         }
-        
+
         for (const line of lines) {
           const trimmed = line.trim();
-          
+
           if (!trimmed) {
             if (currentDialog) {
               dialogs.push(currentDialog);
@@ -64,19 +65,35 @@
             }
             continue;
           }
-          
+
+          const narrationMatch = trimmed.match(narrationRegex);
+          if (narrationMatch) {
+            if (currentDialog) {
+              dialogs.push(currentDialog);
+              speakerSet.add(currentDialog.speaker);
+              currentDialog = null;
+            }
+            dialogs.push({ id: idCounter++, type: 'narration', speaker: '', text: narrationMatch[1].trim(), subTexts: [] });
+            continue;
+          }
+
           const match = trimmed.match(prefixRegex);
-          
+
           if (match) {
             if (currentDialog) {
               dialogs.push(currentDialog);
               speakerSet.add(currentDialog.speaker);
             }
-            let speakerName = match[1].replace(/[Ａ-Ｚａ-ｚ０-９]/g, function(s) {
-                return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
-            }).toUpperCase();
-            
-            currentDialog = { id: idCounter++, speaker: speakerName, text: trimmed.substring(match[0].length).trim(), subTexts: [] };
+            let speakerName = match[1].replace(/[Ａ-Ｚａ-ｚ０-９]/g, (s) =>
+              String.fromCharCode(s.charCodeAt(0) - 0xFEE0)
+            ).toUpperCase();
+
+            currentDialog = {
+              id: idCounter++,
+              speaker: speakerName,
+              text: trimmed.substring(match[0].length).trim(),
+              subTexts: []
+            };
           } else {
             if (currentDialog) {
               currentDialog.subTexts.push(trimmed);
@@ -87,25 +104,30 @@
             }
           }
         }
-        
+
         if (currentDialog) {
           dialogs.push(currentDialog);
           speakerSet.add(currentDialog.speaker);
         }
-        
+
         const speakers = Array.from(speakerSet);
         return { dialogs, speakers: speakers.length > 0 ? speakers : ['A', 'B'] };
       };
-      
-      const generateOfflineAppHtml = (safeDialogsJson, safeSpeakersJson, safeAppTitle, rawAppTitle, safeVocabJson) => {
+
+      const detectMobileRetryRisk = () => {
+        const ua = window.navigator.userAgent || '';
+        return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+      };
+
+      const generateConversationAppHtml = (safeDialogsJson, safeAppTitle, rawAppTitle, safeVocabJson, safeRecordedAudioJson) => {
         const htmlTitle = rawAppTitle.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        
+
         return "<!DOCTYPE html>\n" +
         "<html lang=\"en\">\n" +
         "<head>\n" +
         "  <meta charset=\"UTF-8\">\n" +
         "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-        "  <title>" + htmlTitle + " - Role-play Practice</title>\n" +
+        "  <title>" + htmlTitle + " - Conversation Review</title>\n" +
         "  <script src=\"https://cdn.tailwindcss.com\">\x3C/script>\n" +
         "  <script crossorigin src=\"https://unpkg.com/react@18/umd/react.production.min.js\">\x3C/script>\n" +
         "  <script crossorigin src=\"https://unpkg.com/react-dom@18/umd/react-dom.production.min.js\">\x3C/script>\n" +
@@ -120,103 +142,144 @@
         "  <div id=\"root\"></div>\n" +
         "  <script type=\"text/babel\">\n" +
         "    const { useState, useEffect, useRef } = React;\n" +
-        "    const initialDialogs = " + safeDialogsJson + ";\n" +
-        "    const availableSpeakers = " + safeSpeakersJson + ";\n" +
+        "    const dialogs = " + safeDialogsJson + ";\n" +
         "    const appTitle = " + safeAppTitle + ";\n" +
         "    const initialVocab = " + safeVocabJson + ";\n" +
+        "    const recordedAudioMap = " + safeRecordedAudioJson + ";\n" +
+        "    const speakerThemes = [\n" +
+        "      { bg: 'rgba(248, 113, 113, 0.12)', currentBg: 'rgba(248, 113, 113, 0.18)', border: 'rgba(248, 113, 113, 0.30)', ring: 'rgba(248, 113, 113, 0.16)', shadow: 'rgba(248, 113, 113, 0.28)', label: '#b91c1c', subText: '#7f1d1d' },\n" +
+        "      { bg: 'rgba(96, 165, 250, 0.12)', currentBg: 'rgba(96, 165, 250, 0.18)', border: 'rgba(96, 165, 250, 0.30)', ring: 'rgba(96, 165, 250, 0.16)', shadow: 'rgba(96, 165, 250, 0.26)', label: '#2563eb', subText: '#1d4ed8' },\n" +
+        "      { bg: 'rgba(250, 204, 21, 0.16)', currentBg: 'rgba(250, 204, 21, 0.22)', border: 'rgba(250, 204, 21, 0.32)', ring: 'rgba(250, 204, 21, 0.16)', shadow: 'rgba(202, 138, 4, 0.22)', label: '#a16207', subText: '#92400e' },\n" +
+        "      { bg: 'rgba(192, 132, 252, 0.12)', currentBg: 'rgba(192, 132, 252, 0.18)', border: 'rgba(192, 132, 252, 0.30)', ring: 'rgba(192, 132, 252, 0.16)', shadow: 'rgba(168, 85, 247, 0.24)', label: '#7e22ce', subText: '#6b21a8' }\n" +
+        "    ];\n" +
+        "    const normalizeSpeakerKey = (speaker) => String(speaker || '').trim().toUpperCase();\n" +
+        "    const fixedSpeakerOrder = ['A', 'B', 'C', 'D'];\n" +
+        "    const getSpeakerIndex = (speaker) => {\n" +
+        "      const normalized = normalizeSpeakerKey(speaker);\n" +
+        "      const fixedIndex = fixedSpeakerOrder.indexOf(normalized);\n" +
+        "      if (fixedIndex >= 0) return fixedIndex;\n" +
+        "      const fallbackIndex = dialogs.findIndex((line) => normalizeSpeakerKey(line.speaker) === normalized);\n" +
+        "      return fallbackIndex >= 0 ? fallbackIndex : 0;\n" +
+        "    };\n" +
+        "    const isSpeakerOnRight = (speaker) => getSpeakerIndex(speaker) % 2 === 0;\n" +
+        "    const getSpeakerTheme = (speaker) => speakerThemes[getSpeakerIndex(speaker) % speakerThemes.length];\n" +
         "\n" +
         "    function App() {\n" +
-        "      const dialogs = initialDialogs;\n" +
-        "      const [playMode, setPlayMode] = useState('listen');\n" +
-        "      const userRole = playMode === 'listen' ? 'none' : playMode;\n" +
         "      const [isPlaying, setIsPlaying] = useState(false);\n" +
         "      const [currentIndex, setCurrentIndex] = useState(-1);\n" +
         "      const [status, setStatus] = useState('idle');\n" +
         "      const [isVocabOpen, setIsVocabOpen] = useState(false);\n" +
-        "\n" +
         "      const synthRef = useRef(window.speechSynthesis);\n" +
-        "\n" +
+        "      const audioRef = useRef(null);\n" +
         "      const currentIndexRef = useRef(currentIndex);\n" +
         "      const isPlayingRef = useRef(isPlaying);\n" +
         "      useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);\n" +
         "      useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);\n" +
-        "      const statusRef = useRef(status);\n" +
-        "      useEffect(() => { statusRef.current = status; }, [status]);\n" +
-        "\n" +
-        "      useEffect(() => { if ('speechSynthesis' in window) window.speechSynthesis.getVoices(); }, []);\n" +
-        "\n" +
         "      useEffect(() => {\n" +
-        "        return () => { synthRef.current.cancel(); };\n" +
+        "        if ('speechSynthesis' in window) window.speechSynthesis.getVoices();\n" +
+        "        return () => {\n" +
+        "          try { window.speechSynthesis.cancel(); } catch (e) {}\n" +
+        "          if (audioRef.current) {\n" +
+        "            try { audioRef.current.pause(); } catch (e) {}\n" +
+        "          }\n" +
+        "        };\n" +
         "      }, []);\n" +
         "\n" +
-        "      useEffect(() => {\n" +
-        "        if (!isPlaying || dialogs.length === 0) return;\n" +
-        "        if (currentIndex >= dialogs.length) {\n" +
-        "          setIsPlaying(false); setCurrentIndex(-1); setStatus('idle'); return;\n" +
+        "      const clearAudioPlayback = () => {\n" +
+        "        if (audioRef.current) {\n" +
+        "          try { audioRef.current.pause(); } catch (e) {}\n" +
+        "          try { audioRef.current.removeAttribute('src'); } catch (e) {}\n" +
+        "          try { audioRef.current.load(); } catch (e) {}\n" +
         "        }\n" +
-        "        const currentLine = dialogs[currentIndex];\n" +
-        "        const el = document.getElementById('line-' + currentIndex);\n" +
-        "        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });\n" +
-        "        const isMyTurn = currentLine.speaker === userRole;\n" +
-        "        if (!isMyTurn) {\n" +
-        "          setStatus('speaking'); playBrowserTTS(currentLine.text);\n" +
-        "        } else {\n" +
-        "          setStatus('manual_ready');\n" +
-        "        }\n" +
-        "      }, [currentIndex, isPlaying, dialogs.length, userRole]);\n" +
+        "      };\n" +
         "\n" +
-        "      const playBrowserTTS = (text) => {\n" +
-        "        synthRef.current.cancel();\n" +
+        "      const playAudioSource = (audioSrc, onDone = null) => {\n" +
+        "        clearAudioPlayback();\n" +
+        "        if (!audioSrc) {\n" +
+        "          if (onDone) onDone();\n" +
+        "          return;\n" +
+        "        }\n" +
+        "        const audio = audioRef.current || new Audio();\n" +
+        "        audioRef.current = audio;\n" +
+        "        audio.src = audioSrc;\n" +
+        "        audio.onended = () => { clearAudioPlayback(); if (onDone) onDone(); };\n" +
+        "        audio.onerror = () => { clearAudioPlayback(); if (onDone) onDone(); };\n" +
+        "        const playPromise = audio.play();\n" +
+        "        if (playPromise && typeof playPromise.catch === 'function') {\n" +
+        "          playPromise.catch(() => { clearAudioPlayback(); if (onDone) onDone(); });\n" +
+        "        }\n" +
+        "      };\n" +
+        "\n" +
+        "      const playBrowserTTS = (text, onDone = null) => {\n" +
+        "        try { synthRef.current.cancel(); } catch (e) {}\n" +
         "        const utterance = new SpeechSynthesisUtterance(text);\n" +
         "        utterance.lang = 'ja-JP';\n" +
         "        utterance.rate = 1.0;\n" +
         "        if ('speechSynthesis' in window) {\n" +
         "          const voices = window.speechSynthesis.getVoices();\n" +
-        "          let selectedVoice = voices.find(v => v.lang.includes('ja') && v.name.includes('Google'));\n" +
-        "          if (!selectedVoice) selectedVoice = voices.find(v => v.lang.includes('ja'));\n" +
+        "          let selectedVoice = voices.find((v) => v.lang.includes('ja') && v.name.includes('Google'));\n" +
+        "          if (!selectedVoice) selectedVoice = voices.find((v) => v.lang.includes('ja'));\n" +
         "          if (selectedVoice) utterance.voice = selectedVoice;\n" +
-        "          utterance.onend = () => { setStatus('idle'); if (isPlayingRef.current) setTimeout(() => setCurrentIndex(prev => prev + 1), 100); };\n" +
-        "          utterance.onerror = () => { setStatus('idle'); if (isPlayingRef.current) setCurrentIndex(prev => prev + 1); };\n" +
+        "          utterance.onend = () => { if (onDone) onDone(); };\n" +
+        "          utterance.onerror = () => { if (onDone) onDone(); };\n" +
         "          window.speechSynthesis.speak(utterance);\n" +
-        "        } else {\n" +
-        "          setTimeout(() => { setStatus('idle'); if(isPlayingRef.current) setCurrentIndex(prev => prev + 1); }, 2000);\n" +
+        "        } else if (onDone) {\n" +
+        "          setTimeout(onDone, 1200);\n" +
         "        }\n" +
         "      };\n" +
         "\n" +
-        "      const playSingleLineTTS = (text) => {\n" +
-        "        synthRef.current.cancel();\n" +
-        "        const utterance = new SpeechSynthesisUtterance(text);\n" +
-        "        utterance.lang = 'ja-JP';\n" +
-        "        if ('speechSynthesis' in window) {\n" +
-        "          const voices = window.speechSynthesis.getVoices();\n" +
-        "          let selectedVoice = voices.find(v => v.lang.includes('ja') && v.name.includes('Google'));\n" +
-        "          if (!selectedVoice) selectedVoice = voices.find(v => v.lang.includes('ja'));\n" +
-        "          if (selectedVoice) utterance.voice = selectedVoice;\n" +
-        "          window.speechSynthesis.speak(utterance);\n" +
+        "      const playConversationLine = (line, onDone = null) => {\n" +
+        "        const recordedAudio = recordedAudioMap[line.id] || '';\n" +
+        "        if (recordedAudio) {\n" +
+        "          playAudioSource(recordedAudio, onDone);\n" +
+        "          return;\n" +
         "        }\n" +
+        "        playBrowserTTS(line.text, onDone);\n" +
+        "      };\n" +
+        "\n" +
+        "      useEffect(() => {\n" +
+        "        if (!isPlaying || dialogs.length === 0) return;\n" +
+        "        if (currentIndex >= dialogs.length) {\n" +
+        "          setIsPlaying(false);\n" +
+        "          setCurrentIndex(-1);\n" +
+        "          setStatus('idle');\n" +
+        "          return;\n" +
+        "        }\n" +
+        "        const currentLine = dialogs[currentIndex];\n" +
+        "        const el = document.getElementById('line-' + currentIndex);\n" +
+        "        if (el) el.scrollIntoView({ behavior: currentIndex === 0 ? 'auto' : 'smooth', block: 'center' });\n" +
+        "        setStatus('speaking');\n" +
+        "        playConversationLine(currentLine, () => {\n" +
+        "          setStatus('idle');\n" +
+        "          if (isPlayingRef.current) {\n" +
+        "            setTimeout(() => setCurrentIndex((prev) => prev + 1), 100);\n" +
+        "          }\n" +
+        "        });\n" +
+        "      }, [currentIndex, isPlaying]);\n" +
+        "\n" +
+        "      const playSingleLine = (line) => {\n" +
+        "        playConversationLine(line);\n" +
         "      };\n" +
         "\n" +
         "      const handleStart = () => { setCurrentIndex(0); setIsPlaying(true); };\n" +
-        "      const handleStop = () => { setIsPlaying(false); setCurrentIndex(-1); setStatus('idle'); synthRef.current.cancel(); };\n" +
-        "      const handleSend = () => { setStatus('idle'); if (isPlaying) setCurrentIndex(prev => prev + 1); };\n" +
-        "      const handleManualNext = () => { synthRef.current.cancel(); setCurrentIndex(prev => prev + 1); };\n" +
-        "\n" +
+        "      const handleStop = () => {\n" +
+        "        setIsPlaying(false);\n" +
+        "        setCurrentIndex(-1);\n" +
+        "        setStatus('idle');\n" +
+        "        clearAudioPlayback();\n" +
+        "        try { synthRef.current.cancel(); } catch (e) {}\n" +
+        "      };\n" +
         "\n" +
         "      return (\n" +
-        "        <div className=\"min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 sm:p-8\">\n" +
+        "        <div className=\"min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 sm:p-8 font-ui text-slate-800\">\n" +
         "          <div className=\"w-full max-w-3xl bg-white sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[100dvh] sm:h-[90vh] sm:max-h-[900px] relative\">\n" +
         "            <div className=\"bg-emerald-600 px-4 py-3 sm:px-5 sm:py-4 text-white shadow-md z-20 flex items-center gap-3\">\n" +
-        "              <h1 className=\"flex-1 text-base sm:text-lg font-bold text-white truncate drop-shadow-sm px-1\">{appTitle}</h1>\n" +
-        "              <div className=\"flex items-center gap-2 flex-shrink-0\">\n" +
-        "                {initialVocab.trim() && (\n" +
-        "                  <button onClick={() => setIsVocabOpen(true)} className=\"bg-emerald-800/40 hover:bg-emerald-800/60 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl flex items-center justify-center text-white font-bold transition-all text-xs sm:text-sm\" title=\"Vocabulary\">\n" +
-        "                    📖 Vocab\n" +
-        "                  </button>\n" +
-        "                )}\n" +
-        "              </div>\n" +
+        "              <h1 className=\"flex-1 text-base sm:text-lg font-bold text-center text-white truncate drop-shadow-sm px-1\">{appTitle || 'Conversation Review'}</h1>\n" +
+        "              {initialVocab.trim() && (\n" +
+        "                <button onClick={() => setIsVocabOpen(true)} className=\"bg-emerald-800/40 hover:bg-emerald-800/60 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl flex items-center justify-center text-white font-bold transition-all text-xs sm:text-sm\" title=\"Vocabulary\">📖 Vocab</button>\n" +
+        "              )}\n" +
         "            </div>\n" +
         "\n" +
-        "            {/* Vocabulary Modal */}\n" +
         "            {isVocabOpen && (\n" +
         "              <div className=\"absolute inset-0 bg-slate-900/40 z-[100] flex items-center justify-center p-4 backdrop-blur-sm sm:rounded-3xl\">\n" +
         "                <div className=\"bg-white rounded-3xl w-full max-w-md shadow-2xl flex flex-col max-h-[80%]\">\n" +
@@ -224,9 +287,7 @@
         "                    <h2 className=\"text-lg font-bold flex items-center gap-2\">📖 Vocabulary</h2>\n" +
         "                    <button onClick={() => setIsVocabOpen(false)} className=\"text-emerald-200 hover:text-white text-3xl leading-none px-2\">&times;</button>\n" +
         "                  </div>\n" +
-        "                  <div className=\"p-6 overflow-y-auto whitespace-pre-wrap font-ui text-slate-700 leading-relaxed text-sm md:text-base\">\n" +
-        "                    {initialVocab}\n" +
-        "                  </div>\n" +
+        "                  <div className=\"p-6 overflow-y-auto whitespace-pre-wrap font-ui text-slate-700 leading-relaxed text-sm md:text-base\">{initialVocab}</div>\n" +
         "                </div>\n" +
         "              </div>\n" +
         "            )}\n" +
@@ -236,31 +297,32 @@
         "                {dialogs.map((line, idx) => {\n" +
         "                  const isCurrent = idx === currentIndex;\n" +
         "                  const isPast = idx < currentIndex;\n" +
-        "                  const isMyRole = line.speaker === userRole;\n" +
-        "                  const isLeftSide = playMode === 'listen' ? line.speaker !== availableSpeakers[0] : line.speaker !== userRole;\n" +
+        "                  const isLeftSide = !isSpeakerOnRight(line.speaker);\n" +
+        "                  const speakerTheme = getSpeakerTheme(line.speaker);\n" +
+        "                  const bubbleStyle = {\n" +
+        "                    backgroundColor: isCurrent ? speakerTheme.currentBg : speakerTheme.bg,\n" +
+        "                    border: `1px solid ${speakerTheme.border}`,\n" +
+        "                    boxShadow: isCurrent\n" +
+        "                      ? `0 0 0 4px ${speakerTheme.ring}, 0 14px 28px -18px ${speakerTheme.shadow}`\n" +
+        "                      : `0 10px 20px -18px ${speakerTheme.shadow}`,\n" +
+        "                    color: '#1f2937'\n" +
+        "                  };\n" +
         "                  return (\n" +
-        "                    <div key={idx} id={'line-'+idx} className={\"flex w-full mb-6 sm:mb-8 \" + (isLeftSide ? 'justify-start' : 'justify-end') + \" transition-opacity duration-500 \" + (isPlaying && !isCurrent && !isPast ? 'opacity-30 grayscale-[50%]' : 'opacity-100')}>\n" +
-        "                      <div className={\"max-w-[85%] sm:max-w-[75%] rounded-[2rem] px-5 py-4 sm:px-7 sm:py-5 relative shadow-md group transition-all duration-300 \" + (isMyRole ? (isCurrent ? 'bg-emerald-500 text-white ring-4 ring-emerald-200 shadow-emerald-500/30' : 'bg-emerald-400 text-white') : (isCurrent ? 'bg-white text-slate-800 ring-4 ring-slate-200 shadow-slate-200' : 'bg-white text-slate-800'))}>\n" +
+        "                    <div key={line.id} id={`line-${idx}`} style={{ scrollMarginTop: '96px', scrollMarginBottom: '160px' }} className={`flex w-full mb-6 sm:mb-8 ${isLeftSide ? 'justify-start' : 'justify-end'} transition-opacity duration-500 ${isPlaying && !isCurrent && !isPast ? 'opacity-30 grayscale-[50%]' : 'opacity-100'}`}>\n" +
+        "                      <div className=\"max-w-[85%] sm:max-w-[75%] rounded-[2rem] px-5 py-4 sm:px-7 sm:py-5 relative transition-all duration-300\" style={bubbleStyle}>\n" +
         "                        <div className=\"flex items-center justify-between mb-2\">\n" +
-        "                          <div className={\"text-xs sm:text-sm font-bold uppercase tracking-wider \" + (isMyRole ? 'text-emerald-100' : 'text-slate-400')}>{line.speaker} {isMyRole ? '(You)' : ''}</div>\n" +
-        "                          <button onClick={(e) => { e.stopPropagation(); playSingleLineTTS(line.text); }} className={\"p-1.5 rounded-full hover:bg-black/10 transition-colors \" + (isMyRole ? 'text-emerald-100' : 'text-slate-400')} title=\"Listen to this line\">🔊</button>\n" +
+        "                          <div className=\"text-xs sm:text-sm font-bold uppercase tracking-wider\" style={{ color: speakerTheme.label }}>{line.speaker}</div>\n" +
+        "                          <button onClick={() => playSingleLine(line)} className=\"p-1.5 rounded-full hover:bg-black/10 transition-colors\" style={{ color: speakerTheme.label }} title=\"Listen to this line\">🔊</button>\n" +
         "                        </div>\n" +
-        "                        <div className=\"cursor-pointer\">\n" +
-        "                          <div className={\"font-kyokasho text-xl sm:text-2xl font-semibold leading-relaxed tracking-wide transition-all duration-500 \" + (isMyRole ? 'blur-[6px] group-hover:blur-none' : '')}>{line.text}</div>\n" +
+        "                        <div>\n" +
+        "                          <div className=\"font-kyokasho text-xl sm:text-2xl font-semibold leading-relaxed tracking-wide\">{line.text}</div>\n" +
         "                          {line.subTexts && line.subTexts.length > 0 && (\n" +
-        "                            <div className={\"mt-3 pt-3 border-t text-sm sm:text-base \" + (isMyRole ? 'border-emerald-300/40 text-emerald-50' : 'border-slate-100 text-slate-500')}>\n" +
-        "                              {line.subTexts.map((st, i) => <div key={i} className={\"mb-1.5 last:mb-0 leading-snug transition-all duration-500 \" + (isMyRole && i===0 ? 'blur-[5px] group-hover:blur-none' : '')}>{st}</div>)}\n" +
+        "                            <div className=\"mt-3 pt-3 border-t text-sm sm:text-base\" style={{ borderTopColor: speakerTheme.border, color: speakerTheme.subText }}>\n" +
+        "                              {line.subTexts.map((st, i) => <div key={i} className=\"mb-1.5 last:mb-0 leading-snug\">{st}</div>)}\n" +
         "                            </div>\n" +
         "                          )}\n" +
         "                        </div>\n" +
-        "                        {isMyRole && isCurrent && status === 'manual_ready' && (\n" +
-        "                          <div className=\"mt-4 flex gap-3 justify-end font-ui\">\n" +
-        "                            <button onClick={handleSend} className=\"px-5 py-2 text-sm font-bold bg-white text-emerald-700 hover:bg-emerald-50 rounded-xl shadow-sm transition-colors flex items-center gap-1.5\">⏭️ Next</button>\n" +
-        "                          </div>\n" +
-        "                        )}\n" +
-        "                        {isCurrent && status !== 'manual_ready' && (\n" +
-        "                          <div className={\"absolute top-1/2 -translate-y-1/2 text-3xl animate-bounce drop-shadow-md \" + (isLeftSide ? '-right-10' : '-left-10')}>{isMyRole ? '🎤' : '🗣️'}</div>\n" +
-        "                        )}\n" +
+        "                        {isCurrent && <div className={`absolute ${isLeftSide ? '-right-10' : '-left-10'} top-1/2 -translate-y-1/2 text-3xl animate-bounce drop-shadow-md`}>🗣️</div>}\n" +
         "                      </div>\n" +
         "                    </div>\n" +
         "                  );\n" +
@@ -268,35 +330,20 @@
         "                <div className=\"h-10\"></div>\n" +
         "              </div>\n" +
         "            </div>\n" +
+        "\n" +
         "            <div className=\"bg-white border-t border-slate-200 p-4 sm:p-5 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] z-10\">\n" +
-        "              <div className=\"mb-4 flex flex-wrap gap-2\">\n" +
-        "                <button onClick={() => setPlayMode('listen')} disabled={isPlaying} className={\"flex-1 min-w-[110px] rounded-xl border px-3 py-2 text-sm font-bold transition-all \" + (playMode === 'listen' ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100') + (isPlaying ? ' opacity-50 cursor-not-allowed' : '')}>▶️ All</button>\n" +
-        "                {availableSpeakers.map((spk) => (\n" +
-        "                  <button key={spk} onClick={() => setPlayMode(spk)} disabled={isPlaying} className={\"flex-1 min-w-[110px] rounded-xl border px-3 py-2 text-sm font-bold transition-all \" + (playMode === spk ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100') + (isPlaying ? ' opacity-50 cursor-not-allowed' : '')}>👤 {spk}</button>\n" +
-        "                ))}\n" +
-        "              </div>\n" +
         "              {!isPlaying ? (\n" +
         "                <button onClick={handleStart} className=\"w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 sm:py-4 rounded-xl shadow-md transition-all text-lg flex justify-center items-center gap-2\">\n" +
-        "                  <span className=\"text-xl\">▶️</span> {playMode === 'listen' ? 'Play All' : 'Play'}\n" +
+        "                  <span className=\"text-xl\">▶️</span> {currentIndex === -1 ? 'Play All' : 'Retry'}\n" +
         "                </button>\n" +
         "              ) : (\n" +
         "                <div className=\"flex flex-col gap-4\">\n" +
         "                  <div className=\"text-center font-bold text-slate-600 h-6 text-sm sm:text-base\">\n" +
-        "                    {status === 'speaking' && <span className=\"text-blue-500 tracking-wide\">AI is speaking... 🗣️</span>}\n" +
-        "                    {status === 'manual_ready' && <span className=\"text-rose-500 tracking-wide\">Your turn! Speak aloud, then tap Next 🎤</span>}\n" +
+        "                    {status === 'speaking' && <span className=\"text-blue-500 tracking-wide\">Playing conversation... 🗣️</span>}\n" +
         "                    {status === 'idle' && <span className=\"tracking-wide text-slate-400\">Ready...</span>}\n" +
         "                  </div>\n" +
         "                  <div className=\"flex gap-3\">\n" +
-        "                    <button onClick={handleStop} className=\"flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2\">\n" +
-        "                      <span className=\"text-base\">⏹️</span> Stop\n" +
-        "                    </button>\n" +
-        "                    {(dialogs[currentIndex]?.speaker === userRole) && (\n" +
-        "                      <>\n" +
-        "                        <button onClick={handleManualNext} className=\"flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2\">\n" +
-        "                          <span className=\"text-base\">⏭️</span> Next\n" +
-        "                        </button>\n" +
-        "                      </>\n" +
-        "                    )}\n" +
+        "                    <button onClick={handleStop} className=\"flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2\"><span className=\"text-base\">⏹️</span> Stop</button>\n" +
         "                  </div>\n" +
         "                </div>\n" +
         "              )}\n" +
@@ -305,453 +352,846 @@
         "        </div>\n" +
         "      );\n" +
         "    }\n" +
-        "    \n" +
         "    const rootElement = document.getElementById('root');\n" +
         "    try {\n" +
         "      const root = ReactDOM.createRoot(rootElement);\n" +
         "      root.render(<App />);\n" +
-        "    } catch(err) {\n" +
-        "      rootElement.innerHTML = '<div style=\"padding: 20px; color: red;\">Failed to load App: ' + err.message + '</div>';\n" +
+        "    } catch (err) {\n" +
+        "      rootElement.innerHTML = '<div style=\"padding:20px;color:red;\">Failed to load App: ' + err.message + '</div>';\n" +
         "    }\n" +
         "  \x3C/script>\n" +
         "</body>\n" +
         "</html>";
       };
-      
+
       function App() {
-        const [appState, setAppState] = useState('setup'); 
+        const [appState, setAppState] = useState('setup');
         const [appTitle, setAppTitle] = useState('');
-        const [vocabInput, setVocabInput] = useState(''); // Vocabulary用State
+        const [vocabInput, setVocabInput] = useState('');
         const [scriptInput, setScriptInput] = useState('');
         const [dialogs, setDialogs] = useState([]);
         const [availableSpeakers, setAvailableSpeakers] = useState(['A', 'B']);
-        
-        const [playMode, setPlayMode] = useState('listen'); 
-        const userRole = playMode === 'listen' ? 'none' : playMode;
-        
+
+        const [playMode, setPlayMode] = useState('listen');
+        const isRecordMode = playMode === 'record';
+
         const [isPlaying, setIsPlaying] = useState(false);
         const [currentIndex, setCurrentIndex] = useState(-1);
-        const [status, setStatus] = useState('idle'); 
+        const [status, setStatus] = useState('idle');
+        const [recordedAudioMap, setRecordedAudioMap] = useState({});
+        const [isReviewing, setIsReviewing] = useState(false);
+        const [hasReviewedConversation, setHasReviewedConversation] = useState(false);
         const [isHowToUseOpen, setIsHowToUseOpen] = useState(false);
-        const [isVocabOpen, setIsVocabOpen] = useState(false); // Vocabモーダル用State
-        
+        const [isVocabOpen, setIsVocabOpen] = useState(false);
+        const isTouchMobileDevice = detectMobileRetryRisk();
+
         const synthRef = useRef(window.speechSynthesis);
-        
+        const audioRef = useRef(null);
+        const mediaRecorderRef = useRef(null);
+        const mediaChunksRef = useRef([]);
+        const mediaStreamRef = useRef(null);
+        const recordingLineIdRef = useRef(null);
+        const discardRecordingRef = useRef(false);
+        const pendingRecordingResolveRef = useRef(null);
+
         const currentIndexRef = useRef(currentIndex);
         const isPlayingRef = useRef(isPlaying);
+        const isReviewingRef = useRef(isReviewing);
+
         useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
         useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
-        const statusRef = useRef(status);
-        useEffect(() => { statusRef.current = status; }, [status]);
-        
+        useEffect(() => { isReviewingRef.current = isReviewing; }, [isReviewing]);
+
         useEffect(() => {
-            if ('speechSynthesis' in window) {
-              window.speechSynthesis.getVoices();
+          if ('speechSynthesis' in window) {
+            window.speechSynthesis.getVoices();
+          }
+          return () => {
+            try { synthRef.current.cancel(); } catch (e) {}
+            if (audioRef.current) {
+              try { audioRef.current.pause(); } catch (e) {}
             }
+            void stopUserRecording(true).then(() => stopMediaStream());
+          };
         }, []);
-        
-        useEffect(() => {
-            return () => {
-              synthRef.current.cancel();
-            };
-        }, []);
-        
-        useEffect(() => {
-            if (!isPlaying || dialogs.length === 0) return;
-            if (currentIndex >= dialogs.length) {
-              setIsPlaying(false);
-              setCurrentIndex(-1);
-              setStatus('idle');
+
+        const scrollCurrentLineIntoView = (behavior = 'smooth') => {
+          const targetIndex = currentIndexRef.current;
+          if (targetIndex == null || targetIndex < 0) return;
+          requestAnimationFrame(() => {
+            const el = document.getElementById(`line-${targetIndex}`);
+            if (el) el.scrollIntoView({ behavior, block: 'center', inline: 'nearest' });
+          });
+        };
+
+        const clearAudioPlayback = () => {
+          if (audioRef.current) {
+            try { audioRef.current.pause(); } catch (e) {}
+            try { audioRef.current.removeAttribute('src'); } catch (e) {}
+            try { audioRef.current.load(); } catch (e) {}
+          }
+        };
+
+        const stopAllTTS = () => {
+          clearAudioPlayback();
+          try { synthRef.current.cancel(); } catch (e) {}
+        };
+
+        const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+
+        const stopMediaStream = () => {
+          if (mediaStreamRef.current) {
+            try { mediaStreamRef.current.getTracks().forEach((track) => track.stop()); } catch (e) {}
+            mediaStreamRef.current = null;
+          }
+        };
+
+        const ensureMediaStream = async () => {
+          const existingStream = mediaStreamRef.current;
+          if (existingStream) {
+            const hasLiveTrack = existingStream.getTracks().some((track) => track.readyState === 'live');
+            if (hasLiveTrack) return existingStream;
+            stopMediaStream();
+          }
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaStreamRef.current = stream;
+          return stream;
+        };
+
+        const stopUserRecording = (discard = false) => new Promise((resolve) => {
+          const recorder = mediaRecorderRef.current;
+          if (!recorder) {
+            discardRecordingRef.current = false;
+            mediaRecorderRef.current = null;
+            recordingLineIdRef.current = null;
+            resolve();
+            return;
+          }
+
+          if (recorder.state === 'inactive') {
+            discardRecordingRef.current = discardRecordingRef.current || discard;
+            if (pendingRecordingResolveRef.current) {
+              const previousResolve = pendingRecordingResolveRef.current;
+              pendingRecordingResolveRef.current = () => {
+                previousResolve();
+                resolve();
+              };
               return;
             }
-            const currentLine = dialogs[currentIndex];
-            const el = document.getElementById(`line-${currentIndex}`);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            
-            const isMyTurn = currentLine.speaker === userRole;
-            
-            if (!isMyTurn) {
-              setStatus('speaking');
-              playBrowserTTS(currentLine.text);
-            } else {
-              setStatus('manual_ready');
-            }
-        }, [currentIndex, isPlaying, dialogs.length, userRole]);
-        
-        const playBrowserTTS = (text) => {
-          synthRef.current.cancel();
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = 'ja-JP';
-          utterance.rate = 1.0; 
-          
-          if ('speechSynthesis' in window) {
-            const voices = window.speechSynthesis.getVoices();
-            let selectedVoice = voices.find(v => v.lang.includes('ja') && v.name.includes('Google'));
-            if (!selectedVoice) {
-              selectedVoice = voices.find(v => v.lang.includes('ja')); 
-            }
-            if (selectedVoice) {
-              utterance.voice = selectedVoice;
-            }
-            
-            utterance.onend = () => {
-              setStatus('idle');
-              if (isPlayingRef.current) {
-                setTimeout(() => setCurrentIndex(prev => prev + 1), 100);
+            mediaRecorderRef.current = null;
+            recordingLineIdRef.current = null;
+            resolve();
+            return;
+          }
+
+          discardRecordingRef.current = discard;
+          pendingRecordingResolveRef.current = resolve;
+
+          try {
+            recorder.stop();
+          } catch (error) {
+            console.error('Failed to stop user recording:', error);
+            discardRecordingRef.current = false;
+            mediaRecorderRef.current = null;
+            recordingLineIdRef.current = null;
+            pendingRecordingResolveRef.current = null;
+            resolve();
+          }
+        });
+
+        const startUserRecording = async (lineId) => {
+          if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !isRecordMode) {
+            return false;
+          }
+
+          if (recordingLineIdRef.current === lineId && mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            return true;
+          }
+
+          await stopUserRecording(true);
+
+          try {
+            const stream = await ensureMediaStream();
+            mediaChunksRef.current = [];
+            recordingLineIdRef.current = lineId;
+            discardRecordingRef.current = false;
+
+            const recorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = recorder;
+
+            recorder.ondataavailable = (event) => {
+              if (event.data && event.data.size > 0) {
+                mediaChunksRef.current.push(event.data);
               }
             };
-            utterance.onerror = () => {
-              setStatus('idle');
-              if (isPlayingRef.current) setCurrentIndex(prev => prev + 1);
+
+            recorder.onstop = async () => {
+              const recordedLineId = recordingLineIdRef.current;
+              const chunks = mediaChunksRef.current.slice();
+              const shouldDiscard = discardRecordingRef.current;
+
+              mediaChunksRef.current = [];
+              discardRecordingRef.current = false;
+              mediaRecorderRef.current = null;
+              recordingLineIdRef.current = null;
+
+              if (!shouldDiscard && recordedLineId != null && chunks.length > 0) {
+                try {
+                  const blob = new Blob(chunks, { type: chunks[0]?.type || 'audio/webm' });
+                  const audioDataUrl = await blobToDataUrl(blob);
+                  setRecordedAudioMap((prev) => ({ ...prev, [recordedLineId]: audioDataUrl }));
+                  setHasReviewedConversation(false);
+                } catch (error) {
+                  console.error('Failed to save user recording:', error);
+                }
+              }
+
+              const pendingResolve = pendingRecordingResolveRef.current;
+              pendingRecordingResolveRef.current = null;
+              if (pendingResolve) pendingResolve();
             };
-            window.speechSynthesis.speak(utterance);
-          } else {
-            setTimeout(() => {
-                setStatus('idle');
-                if (isPlayingRef.current) setCurrentIndex(prev => prev + 1);
-            }, 2000);
+
+            recorder.start();
+            return true;
+          } catch (error) {
+            console.error('Failed to start user recording:', error);
+            mediaRecorderRef.current = null;
+            recordingLineIdRef.current = null;
+            mediaChunksRef.current = [];
+            stopMediaStream();
+            return false;
           }
         };
-        
-        const playSingleLineTTS = (text) => {
-          synthRef.current.cancel();
+
+        const playAudioSource = (audioSrc, onDone = null) => {
+          clearAudioPlayback();
+          if (!audioSrc) {
+            if (onDone) onDone();
+            return;
+          }
+          const audio = audioRef.current || new Audio();
+          audioRef.current = audio;
+          audio.src = audioSrc;
+          audio.onended = () => {
+            clearAudioPlayback();
+            if (onDone) onDone();
+          };
+          audio.onerror = () => {
+            clearAudioPlayback();
+            if (onDone) onDone();
+          };
+          const playPromise = audio.play();
+          if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch((error) => {
+              console.error('Recorded audio playback failed:', error);
+              clearAudioPlayback();
+              if (onDone) onDone();
+            });
+          }
+        };
+
+        const playBrowserTTS = (text, onDone = null) => {
+          try { synthRef.current.cancel(); } catch (e) {}
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.lang = 'ja-JP';
-          utterance.rate = 1.0; 
+          utterance.rate = 1.0;
+
           if ('speechSynthesis' in window) {
             const voices = window.speechSynthesis.getVoices();
-            let selectedVoice = voices.find(v => v.lang.includes('ja') && v.name.includes('Google'));
-            if (!selectedVoice) selectedVoice = voices.find(v => v.lang.includes('ja'));
+            let selectedVoice = voices.find((v) => v.lang.includes('ja') && v.name.includes('Google'));
+            if (!selectedVoice) selectedVoice = voices.find((v) => v.lang.includes('ja'));
             if (selectedVoice) utterance.voice = selectedVoice;
+
+            utterance.onend = () => {
+              if (onDone) onDone();
+            };
+            utterance.onerror = () => {
+              if (onDone) onDone();
+            };
             window.speechSynthesis.speak(utterance);
+          } else if (onDone) {
+            setTimeout(onDone, 1200);
           }
         };
-        
+
+        const playSingleLineTTS = (line) => {
+          if (recordedAudioMap[line.id]) {
+            playAudioSource(recordedAudioMap[line.id]);
+            return;
+          }
+          playBrowserTTS(line.text);
+        };
+
+        const playReviewLine = (line, onDone = null) => {
+          const recordedAudio = recordedAudioMap[line.id] || '';
+          if (recordedAudio) {
+            playAudioSource(recordedAudio, onDone);
+            return;
+          }
+          playBrowserTTS(line.text, onDone);
+        };
+
+        useEffect(() => {
+          if (!isPlaying || dialogs.length === 0) return;
+
+          if (currentIndex >= dialogs.length) {
+            setIsPlaying(false);
+            setCurrentIndex(-1);
+            setStatus('idle');
+            if (isReviewingRef.current) setHasReviewedConversation(true);
+            setIsReviewing(false);
+            void stopUserRecording(true).then(() => stopMediaStream());
+            return;
+          }
+
+          const currentLine = dialogs[currentIndex];
+          scrollCurrentLineIntoView(currentIndex === 0 ? 'auto' : 'smooth');
+
+          if (currentLine.type === 'narration') {
+            void stopUserRecording(true);
+            stopAllTTS();
+            setStatus('narration');
+            const timer = setTimeout(() => {
+              setStatus('idle');
+              if (isPlayingRef.current) {
+                setCurrentIndex((prev) => prev + 1);
+              }
+            }, 900);
+            return () => clearTimeout(timer);
+          }
+
+          if (isReviewing) {
+            setStatus('speaking');
+            playReviewLine(currentLine, () => {
+              setStatus('idle');
+              if (isPlayingRef.current) {
+                setTimeout(() => setCurrentIndex((prev) => prev + 1), 100);
+              }
+            });
+            return;
+          }
+
+          if (playMode === 'listen') {
+            void stopUserRecording(true);
+            setStatus('speaking');
+            playBrowserTTS(currentLine.text, () => {
+              setStatus('idle');
+              if (isPlayingRef.current) {
+                setTimeout(() => setCurrentIndex((prev) => prev + 1), 100);
+              }
+            });
+          } else {
+            void stopUserRecording(true);
+            stopAllTTS();
+            setStatus('manual_ready');
+          }
+        }, [currentIndex, isPlaying, dialogs.length, playMode, isReviewing]);
+
+        useEffect(() => {
+          if (!isPlaying || currentIndex < 0) return;
+          if (status !== 'manual_ready' && status !== 'recording' && status !== 'ready_to_send') return;
+          const timer = setTimeout(() => scrollCurrentLineIntoView('smooth'), 80);
+          return () => clearTimeout(timer);
+        }, [status, currentIndex, isPlaying]);
+
         const handleLoadScript = () => {
           const { dialogs: parsedDialogs, speakers } = parseScript(scriptInput);
           if (parsedDialogs.length > 0) {
             setDialogs(parsedDialogs);
             setAvailableSpeakers(speakers);
             setPlayMode('listen');
+            setRecordedAudioMap({});
+            setHasReviewedConversation(false);
             setAppState('play');
           }
         };
-        
-        const handleExportApp = () => {
-          const inputName = prompt("Please enter your name to download the app:", "");
-          if (inputName === null) {
+
+        const sanitizeFilePart = (text, fallback) => {
+          const cleaned = String(text || '').trim().replace(/[\s\\/:*?"<>|]+/g, '_');
+          return cleaned || fallback;
+        };
+
+        const handleDownloadConversation = () => {
+          if (Object.keys(recordedAudioMap).length === 0) {
+            alert('Record at least one line before downloading the conversation.');
             return;
           }
+
+          const inputName = prompt("Please enter your name to download the conversation:", "");
+          if (inputName === null) return;
           if (!inputName.trim()) {
             alert("Name is required to download.");
             return;
           }
-          
-          const { dialogs: parsedDialogs, speakers } = parseScript(scriptInput);
+
+          const { dialogs: parsedDialogs } = parseScript(scriptInput);
           if (parsedDialogs.length === 0) return;
-          
+
           const safeDialogsJson = JSON.stringify(parsedDialogs).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
-          const safeSpeakersJson = JSON.stringify(speakers).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
           const safeAppTitle = JSON.stringify(appTitle).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
           const safeVocabJson = JSON.stringify(vocabInput).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
-          
-          const htmlString = generateOfflineAppHtml(safeDialogsJson, safeSpeakersJson, safeAppTitle, appTitle, safeVocabJson);
+          const safeRecordedAudioJson = JSON.stringify(recordedAudioMap).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+
+          const htmlString = generateConversationAppHtml(
+            safeDialogsJson,
+            safeAppTitle,
+            appTitle,
+            safeVocabJson,
+            safeRecordedAudioJson
+          );
+
           const blob = new Blob([htmlString], { type: 'text/html' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          
-          const safeTitle = appTitle.replace(/[\s\\/:*?"<>|]+/g, '_') || 'Roleplay_App';
-          const safeName = inputName.trim().replace(/[\s\\/:*?"<>|]+/g, '_');
-          a.download = `${safeTitle}(${safeName}).html`;
+
+          const safeTitle = sanitizeFilePart(appTitle, 'Roleplay_Conversation');
+          const safeName = sanitizeFilePart(inputName, 'student');
+          a.download = `${safeTitle}(${safeName})_conversation.html`;
           a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
         };
-        
+
         const handleStart = () => {
+          void stopUserRecording(true);
+          setRecordedAudioMap({});
+          setHasReviewedConversation(false);
+          setIsReviewing(false);
           setCurrentIndex(0);
           setIsPlaying(true);
         };
-        
+
         const handleStop = () => {
+          void stopUserRecording(true).then(() => stopMediaStream());
+          setIsReviewing(false);
           setIsPlaying(false);
           setCurrentIndex(-1);
           setStatus('idle');
-          synthRef.current.cancel();
+          stopAllTTS();
         };
-        
+
         const handleSend = () => {
+          void stopUserRecording(false);
           setStatus('idle');
           if (isPlaying) {
-            setCurrentIndex(prev => prev + 1);
+            setCurrentIndex((prev) => prev + 1);
           }
         };
-        
+
         const handleManualNext = () => {
-          synthRef.current.cancel();
-          setCurrentIndex(prev => prev + 1);
+          void stopUserRecording(true);
+          stopAllTTS();
+          setStatus('idle');
+          setCurrentIndex((prev) => prev + 1);
         };
-        
+
+        const handleManualMic = async () => {
+          void stopUserRecording(true);
+          setHasReviewedConversation(false);
+          setRecordedAudioMap((prev) => {
+            const next = { ...prev };
+            const lineId = dialogs[currentIndex]?.id;
+            if (lineId != null) delete next[lineId];
+            return next;
+          });
+          const line = dialogs[currentIndexRef.current];
+          if (!line) return;
+          stopAllTTS();
+          setStatus('recording');
+          const started = await startUserRecording(line.id);
+          if (!started) {
+            setStatus('manual_ready');
+          }
+        };
+
+        const handleStopManualRecording = async () => {
+          await stopUserRecording(false);
+          setStatus('ready_to_send');
+        };
+
+        const handleReviewConversation = () => {
+          if (dialogs.length === 0 || Object.keys(recordedAudioMap).length === 0) return;
+          void stopUserRecording(true).then(() => stopMediaStream());
+          stopAllTTS();
+          setIsReviewing(true);
+          setCurrentIndex(0);
+          setIsPlaying(true);
+          setStatus('speaking');
+        };
+
+        const speakerThemes = [
+          {
+            bg: 'rgba(248, 113, 113, 0.12)',
+            currentBg: 'rgba(248, 113, 113, 0.18)',
+            border: 'rgba(248, 113, 113, 0.30)',
+            ring: 'rgba(248, 113, 113, 0.16)',
+            shadow: 'rgba(248, 113, 113, 0.28)',
+            label: '#b91c1c',
+            subText: '#7f1d1d'
+          },
+          {
+            bg: 'rgba(96, 165, 250, 0.12)',
+            currentBg: 'rgba(96, 165, 250, 0.18)',
+            border: 'rgba(96, 165, 250, 0.30)',
+            ring: 'rgba(96, 165, 250, 0.16)',
+            shadow: 'rgba(96, 165, 250, 0.26)',
+            label: '#2563eb',
+            subText: '#1d4ed8'
+          },
+          {
+            bg: 'rgba(250, 204, 21, 0.16)',
+            currentBg: 'rgba(250, 204, 21, 0.22)',
+            border: 'rgba(250, 204, 21, 0.32)',
+            ring: 'rgba(250, 204, 21, 0.16)',
+            shadow: 'rgba(202, 138, 4, 0.22)',
+            label: '#a16207',
+            subText: '#92400e'
+          },
+          {
+            bg: 'rgba(192, 132, 252, 0.12)',
+            currentBg: 'rgba(192, 132, 252, 0.18)',
+            border: 'rgba(192, 132, 252, 0.30)',
+            ring: 'rgba(192, 132, 252, 0.16)',
+            shadow: 'rgba(168, 85, 247, 0.24)',
+            label: '#7e22ce',
+            subText: '#6b21a8'
+          }
+        ];
+
+        const normalizeSpeakerKey = (speaker) => String(speaker || '').trim().toUpperCase();
+        const fixedSpeakerOrder = ['A', 'B', 'C', 'D'];
+        const getSpeakerIndex = (speaker) => {
+          const normalized = normalizeSpeakerKey(speaker);
+          const fixedIndex = fixedSpeakerOrder.indexOf(normalized);
+          if (fixedIndex >= 0) return fixedIndex;
+          const fallbackIndex = availableSpeakers.findIndex((spk) => normalizeSpeakerKey(spk) === normalized);
+          return fallbackIndex >= 0 ? fallbackIndex : 0;
+        };
+        const isSpeakerOnRight = (speaker) => getSpeakerIndex(speaker) % 2 === 0;
+        const getSpeakerTheme = (speaker) => speakerThemes[getSpeakerIndex(speaker) % speakerThemes.length];
+
         return (
           <>
-          {appState === 'setup' && (
+            {appState === 'setup' && (
               <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 sm:p-8 font-ui text-slate-800">
-              <div className="w-full max-w-3xl bg-white sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[100dvh] sm:h-[90vh] sm:max-h-[900px]">
-              <div className="bg-emerald-600 p-6 sm:p-8 text-white flex-shrink-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-center tracking-wide">Role-play Generator</h1>
-              </div>
-              
-              <div className="p-6 sm:p-10 flex-1 flex flex-col gap-6 overflow-y-auto">
-              
-              {/* How to use Accordion */}
-              <div className="bg-emerald-50 text-emerald-800 rounded-2xl border border-emerald-100 shadow-sm overflow-hidden flex-shrink-0">
-              <button 
-              onClick={() => setIsHowToUseOpen(!isHowToUseOpen)}
-              className="w-full p-4 flex items-center justify-between font-bold text-base hover:bg-emerald-100/50 transition-colors"
-              >
-              <span className="flex items-center gap-2"><span className="text-xl">📄</span> How to use</span>
-              <span className={`transform transition-transform ${isHowToUseOpen ? 'rotate-180' : ''}`}>▼</span>
-              </button>
-              {isHowToUseOpen && (
-                  <div className="p-4 pt-0">
-                  <p className="text-sm sm:text-base mb-2 opacity-90">Create a simple role-play practice app with browser voice reading and tap-to-progress role-play.</p>
-                  <ol className="list-decimal pl-6 opacity-90 space-y-2 text-sm sm:text-base mt-2">
-                  <li>Input the Title of your role-play.</li>
-                  <li>Input your conversation script below.</li>
-                  <li>Provide Vocabulary (Optional).</li>
-                  <li>Use <code>A:</code> and <code>B:</code> to specify speakers, <strong>OR</strong> leave a blank line between turns.</li>
-                  </ol>
-                  <div className="mt-3 p-3 bg-white/60 rounded-lg text-sm border border-emerald-200">
-                  <strong>🔒 Privacy Notice:</strong> This app runs locally in your browser. We do not collect or send your practice data to external servers.
+                <div className="w-full max-w-3xl bg-white sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[100dvh] sm:h-[90vh] sm:max-h-[900px]">
+                  <div className="bg-emerald-600 p-6 sm:p-8 text-white flex-shrink-0">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-center tracking-wide">Role-play Generator</h1>
                   </div>
-                  </div>
-              )}
-              </div>
-              
-              <div className="flex flex-col flex-shrink-0">
-              <label className="text-sm font-bold text-slate-500 mb-2 uppercase tracking-wider">Title</label>
-              <input 
-              type="text"
-              className="w-full p-4 border-2 border-slate-200 rounded-2xl focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 font-ui text-sm shadow-inner transition-all bg-slate-50 focus:bg-white"
-              value={appTitle}
-              onChange={(e) => setAppTitle(e.target.value)}
-              placeholder="e.g. Shopping"
-              />
-              </div>
-              
-              <div className="flex-1 flex flex-col min-h-[250px]">
-              <label className="text-sm font-bold text-slate-500 mb-2 uppercase tracking-wider">Script</label>
-              <textarea 
-              className="flex-1 w-full p-5 border-2 border-slate-200 rounded-2xl focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 font-mono text-sm sm:text-base resize-none shadow-inner transition-all leading-relaxed bg-slate-50 focus:bg-white whitespace-pre-wrap"
-              value={scriptInput}
-              onChange={(e) => setScriptInput(e.target.value)}
-              placeholder={"A: これ、いくらですか？\nKore, ikura desu ka?\nHow much is this?\n\nB: 1000円です。\nSen-en desu.\nIt's 1000 yen."}
-              />
-              </div>
-              
-              <div className="flex flex-col flex-shrink-0">
-              <label className="text-sm font-bold text-slate-500 mb-2 uppercase tracking-wider">Vocabulary (Optional)</label>
-              <textarea 
-              className="w-full p-4 border-2 border-slate-200 rounded-2xl focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 font-ui text-sm resize-y shadow-inner transition-all leading-relaxed bg-slate-50 focus:bg-white whitespace-pre-wrap min-h-[120px]"
-              value={vocabInput}
-              onChange={(e) => setVocabInput(e.target.value)}
-              placeholder="すみません : Excuse me / Hello&#10;ください : please give me"
-              />
-              </div>
-              
-              <div className="flex flex-col sm:flex-row gap-4 mt-2 flex-shrink-0">
-              <button 
-              onClick={handleLoadScript}
-              disabled={!scriptInput.trim()}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-500 hover:-translate-y-1 text-white font-bold py-5 px-6 rounded-2xl shadow-lg shadow-emerald-600/30 transition-all duration-300 disabled:opacity-50 disabled:hover:translate-y-0 text-lg flex items-center justify-center gap-2"
-              >
-              <span className="text-2xl">▶️</span> Practice
-              </button>
-              <button 
-              onClick={handleExportApp}
-              disabled={!scriptInput.trim()}
-              className="flex-1 bg-indigo-600 hover:bg-indigo-500 hover:-translate-y-1 text-white font-bold py-5 px-6 rounded-2xl shadow-lg shadow-indigo-600/30 transition-all duration-300 disabled:opacity-50 disabled:hover:translate-y-0 text-lg flex items-center justify-center gap-2"
-              >
-              <span className="text-2xl">📥</span> Download
-              </button>
-              </div>
-              </div>
-              </div>
-              </div>
-          )}
-          
-          {appState === 'play' && (
-              <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 sm:p-8 font-ui text-slate-800">
-              <div className="w-full max-w-3xl bg-white sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[100dvh] sm:h-[90vh] sm:max-h-[900px] relative">
-              
-              {/* Header - Responsive Layout */}
-              <div className="bg-emerald-600 px-4 py-3 sm:px-5 sm:py-4 text-white shadow-md z-20 flex items-center gap-3">
-              <button 
-              onClick={() => { handleStop(); setAppState('setup'); }}
-              className="flex-shrink-0 text-emerald-100 hover:text-white flex items-center justify-center w-10 h-10 rounded-full hover:bg-emerald-700 transition-colors"
-              title="Back to Edit"
-              >
-              <span className="text-xl">⬅️</span>
-              </button>
-              
-              <h1 className="flex-1 text-base sm:text-lg font-bold text-center text-white truncate drop-shadow-sm px-1">
-              {appTitle || 'Role-play Practice'}
-              </h1>
-              
-              <div className="flex items-center gap-2 flex-shrink-0">
-              {vocabInput.trim() && (
-                  <button 
-                  onClick={() => setIsVocabOpen(true)} 
-                  className="bg-emerald-800/40 hover:bg-emerald-800/60 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl flex items-center justify-center text-white font-bold transition-all text-xs sm:text-sm"
-                  title="Vocabulary"
-                  >
-                  📖 Vocab
-                  </button>
-              )}
-              </div>
-              </div>
-              
-              {/* Vocabulary Modal */}
-              {isVocabOpen && (
-                  <div className="absolute inset-0 bg-slate-900/40 z-[100] flex items-center justify-center p-4 backdrop-blur-sm sm:rounded-3xl">
-                  <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl flex flex-col max-h-[80%]">
-                  <div className="bg-emerald-600 px-5 py-4 flex items-center justify-between text-white rounded-t-3xl">
-                  <h2 className="text-lg font-bold flex items-center gap-2">📖 Vocabulary</h2>
-                  <button onClick={() => setIsVocabOpen(false)} className="text-emerald-200 hover:text-white text-3xl leading-none px-2">&times;</button>
-                  </div>
-                  <div className="p-6 overflow-y-auto whitespace-pre-wrap font-ui text-slate-700 leading-relaxed text-sm md:text-base">
-                  {vocabInput}
-                  </div>
-                  </div>
-                  </div>
-              )}
-              
-              {/* Script Display Area */}
-              <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8 bg-slate-100">
-              <div className="max-w-2xl mx-auto w-full">
-              
-              {dialogs.map((line, idx) => {
-                    const isCurrent = idx === currentIndex;
-                    const isPast = idx < currentIndex;
-                    const isMyRole = line.speaker === userRole;
-                    const isLeftSide = playMode === 'listen' ? line.speaker !== availableSpeakers[0] : line.speaker !== userRole;
-                    
-                    return (
-                      <div key={idx} id={`line-${idx}`} className={`flex w-full mb-6 sm:mb-8 ${isLeftSide ? 'justify-start' : 'justify-end'} transition-opacity duration-500 ${isPlaying && !isCurrent && !isPast ? 'opacity-30 grayscale-[50%]' : 'opacity-100'}`}>
-                      <div className={`max-w-[85%] sm:max-w-[75%] rounded-[2rem] px-5 py-4 sm:px-7 sm:py-5 relative shadow-md group transition-all duration-300 ${
-                          isMyRole 
-                          ? (isCurrent ? 'bg-emerald-500 text-white ring-4 ring-emerald-200 shadow-emerald-500/30' : 'bg-emerald-400 text-white') 
-                          : (isCurrent ? 'bg-white text-slate-800 ring-4 ring-slate-200 shadow-slate-200' : 'bg-white text-slate-800')
-                      }`}
+
+                  <div className="p-6 sm:p-10 flex-1 flex flex-col gap-6 overflow-y-auto">
+                    <div className="bg-emerald-50 text-emerald-800 rounded-2xl border border-emerald-100 shadow-sm overflow-hidden flex-shrink-0">
+                      <button
+                        onClick={() => setIsHowToUseOpen(!isHowToUseOpen)}
+                        className="w-full p-4 flex items-center justify-between font-bold text-base hover:bg-emerald-100/50 transition-colors"
                       >
-                      <div className="flex items-center justify-between mb-2">
-                      <div className={`text-xs sm:text-sm font-bold uppercase tracking-wider ${isMyRole ? 'text-emerald-100' : 'text-slate-400'}`}>
-                      {line.speaker} {isMyRole ? '(You)' : ''}
-                      </div>
-                      <button 
-                      onClick={(e) => { e.stopPropagation(); playSingleLineTTS(line.text); }} 
-                      className={`p-1.5 rounded-full hover:bg-black/10 transition-colors ${isMyRole ? 'text-emerald-100' : 'text-slate-400'}`} 
-                      title="Listen to this line"
-                      >
-                      🔊
+                        <span className="flex items-center gap-2"><span className="text-xl">📄</span> How to use</span>
+                        <span className={`transform transition-transform ${isHowToUseOpen ? 'rotate-180' : ''}`}>▼</span>
                       </button>
-                      </div>
-                      
-                      <div className="cursor-pointer">
-                      <div className={`font-kyokasho text-xl sm:text-2xl font-semibold leading-relaxed tracking-wide transition-all duration-500 ${isMyRole ? 'blur-[6px] group-hover:blur-none' : ''}`}>
-                      {line.text}
-                      </div>
-                      {line.subTexts && line.subTexts.length > 0 && (
-                          <div className={`mt-3 pt-3 border-t text-sm sm:text-base ${isMyRole ? 'border-emerald-300/40 text-emerald-50' : 'border-slate-100 text-slate-500'}`}>
-                          {line.subTexts.map((st, i) => {
-                                const isRomaji = i === 0;
-                                return (
-                                  <div key={i} className={`mb-1.5 last:mb-0 leading-snug transition-all duration-500 ${isMyRole && isRomaji ? 'blur-[5px] group-hover:blur-none' : ''}`}>
-                                  {st}
-                                  </div>
-                                );
-                          })}
+                      {isHowToUseOpen && (
+                        <div className="p-4 pt-0">
+                          <p className="text-sm sm:text-base mb-2 opacity-90">Create a simple browser-TTS role-play app with listening mode and button-tap recording mode.</p>
+                          <ol className="list-decimal pl-6 opacity-90 space-y-2 text-sm sm:text-base mt-2">
+                            <li>Input the Title of your role-play.</li>
+                            <li>Input your conversation script below.</li>
+                            <li>Provide Vocabulary (Optional).</li>
+                            <li>Use <code>A:</code> and <code>B:</code> to specify speakers, <strong>OR</strong> leave a blank line between turns.</li>
+                            <li>Use <strong>Listen</strong> to hear the script, or <strong>Role-play</strong> to record each line yourself.</li>
+                          </ol>
+                          <p className="text-sm sm:text-base mt-3 opacity-90">Note: On iPhone, iPad, and Android, some features are limited. A laptop or desktop computer is recommended.</p>
+                          <div className="mt-3 p-3 bg-white/60 rounded-lg text-sm border border-emerald-200">
+                            <strong>🔒 Privacy Notice:</strong> This app records and processes practice audio locally in your browser. We do not collect, store, or send your voice data to external servers.
                           </div>
+                        </div>
                       )}
-                      </div>
-                      
-                      {isMyRole && isCurrent && status === 'manual_ready' && (
-                          <div className="mt-4 flex gap-3 justify-end font-ui">
-                          <button onClick={handleSend} className="px-5 py-2 text-sm font-bold bg-white text-emerald-700 hover:bg-emerald-50 rounded-xl shadow-sm transition-colors flex items-center gap-1.5">
-                          ⏭️ Next
-                          </button>
-                          </div>
-                      )}
-                      
-                      {isCurrent && status !== 'manual_ready' && (
-                          <div className={`absolute ${isLeftSide ? '-right-10' : '-left-10'} top-1/2 -translate-y-1/2 text-3xl animate-bounce drop-shadow-md`}>
-                          {isMyRole ? '🎤' : '🗣️'}
-                          </div>
-                      )}
-                      </div>
-                      </div>
-                    );
-              })}
-              <div className="h-10"></div>
+                    </div>
+
+                    <div className="flex flex-col flex-shrink-0">
+                      <label className="text-sm font-bold text-slate-500 mb-2 uppercase tracking-wider">Title</label>
+                      <input
+                        type="text"
+                        className="w-full p-4 border-2 border-slate-200 rounded-2xl focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 font-ui text-sm shadow-inner transition-all bg-slate-50 focus:bg-white"
+                        value={appTitle}
+                        onChange={(e) => setAppTitle(e.target.value)}
+                        placeholder="e.g. Shopping"
+                      />
+                    </div>
+
+                    <div className="flex-1 flex flex-col min-h-[250px]">
+                      <label className="text-sm font-bold text-slate-500 mb-2 uppercase tracking-wider">Script</label>
+                      <textarea
+                        className="flex-1 w-full p-5 border-2 border-slate-200 rounded-2xl focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 font-mono text-sm sm:text-base resize-none shadow-inner transition-all leading-relaxed bg-slate-50 focus:bg-white whitespace-pre-wrap"
+                        value={scriptInput}
+                        onChange={(e) => setScriptInput(e.target.value)}
+                        placeholder={"A: これ、いくらですか？\nKore, ikura desu ka?\nHow much is this?\n\nB: 1000円です。\nSen-en desu.\nIt's 1000 yen."}
+                      />
+                    </div>
+
+                    <div className="flex flex-col flex-shrink-0">
+                      <label className="text-sm font-bold text-slate-500 mb-2 uppercase tracking-wider">Vocabulary (Optional)</label>
+                      <textarea
+                        className="w-full p-4 border-2 border-slate-200 rounded-2xl focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/20 font-ui text-sm resize-y shadow-inner transition-all leading-relaxed bg-slate-50 focus:bg-white whitespace-pre-wrap min-h-[120px]"
+                        value={vocabInput}
+                        onChange={(e) => setVocabInput(e.target.value)}
+                        placeholder={"すみません : Excuse me / Hello\nください : please give me"}
+                      />
+                    </div>
+
+                    <div className="mt-2 flex-shrink-0">
+                      <button
+                        onClick={handleLoadScript}
+                        disabled={!scriptInput.trim()}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 hover:-translate-y-1 text-white font-bold py-5 px-6 rounded-2xl shadow-lg shadow-emerald-600/30 transition-all duration-300 disabled:opacity-50 disabled:hover:translate-y-0 text-lg flex items-center justify-center gap-2"
+                      >
+                        <span className="text-2xl">▶️</span> Practice
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              </div>
-              
-              {/* Controls (Footer) */}
-              <div className="bg-white border-t border-slate-200 p-4 sm:p-5 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] z-10">
-              <div className="mb-4 flex flex-wrap gap-2">
-              <button
-              onClick={() => setPlayMode('listen')}
-              disabled={isPlaying}
-              className={`flex-1 min-w-[110px] rounded-xl border px-3 py-2 text-sm font-bold transition-all ${playMode === 'listen' ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'} ${isPlaying ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-              ▶️ All
-              </button>
-              {availableSpeakers.map((spk) => (
+            )}
+
+            {appState === 'play' && (
+              <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 sm:p-8 font-ui text-slate-800">
+                <div className="w-full max-w-3xl bg-white sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[100dvh] sm:h-[90vh] sm:max-h-[900px] relative">
+                  <div className="bg-emerald-600 px-4 py-3 sm:px-5 sm:py-4 text-white shadow-md z-20 flex items-center gap-3">
                     <button
-                    key={spk}
-                    onClick={() => setPlayMode(spk)}
-                    disabled={isPlaying}
-                    className={`flex-1 min-w-[110px] rounded-xl border px-3 py-2 text-sm font-bold transition-all ${playMode === spk ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'} ${isPlaying ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      onClick={() => { handleStop(); setAppState('setup'); }}
+                      className="flex-shrink-0 text-emerald-100 hover:text-white flex items-center justify-center w-10 h-10 rounded-full hover:bg-emerald-700 transition-colors"
+                      title="Back to Edit"
                     >
-                    👤 {spk}
+                      <span className="text-xl">⬅️</span>
                     </button>
-              ))}
-              </div>
-              {!isPlaying ? (
-                  <button onClick={handleStart} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 sm:py-4 rounded-xl shadow-md transition-all text-lg flex justify-center items-center gap-2">
-                  <span className="text-xl">▶️</span> {playMode === 'listen' ? 'Play All' : 'Play'}
-                  </button>
-                ) : (
-                  <div className="flex flex-col gap-4">
-                  <div className="text-center font-bold text-slate-600 h-6 text-sm sm:text-base">
-                  {status === 'speaking' && <span className="text-blue-500 tracking-wide">AI is speaking... 🗣️</span>}
-                  {status === 'manual_ready' && <span className="text-rose-500 tracking-wide">Your turn! Speak aloud, then tap Next 🎤</span>}
-                  {status === 'idle' && <span className="tracking-wide text-slate-400">Ready...</span>}
+
+                    <h1 className="flex-1 text-base sm:text-lg font-bold text-center text-white truncate drop-shadow-sm px-1">
+                      {appTitle || 'Role-play Practice'}
+                    </h1>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {vocabInput.trim() && (
+                        <button
+                          onClick={() => setIsVocabOpen(true)}
+                          className="bg-emerald-800/40 hover:bg-emerald-800/60 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl flex items-center justify-center text-white font-bold transition-all text-xs sm:text-sm"
+                          title="Vocabulary"
+                        >
+                          📖 Vocab
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex gap-3">
-                  <button onClick={handleStop} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
-                  <span className="text-base">⏹️</span> Stop
-                  </button>
-                  {(dialogs[currentIndex]?.speaker === userRole) && (
-                      <button onClick={handleManualNext} className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
-                      <span className="text-base">⏭️</span> Next
-                      </button>
+
+                  {isVocabOpen && (
+                    <div className="absolute inset-0 bg-slate-900/40 z-[100] flex items-center justify-center p-4 backdrop-blur-sm sm:rounded-3xl">
+                      <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl flex flex-col max-h-[80%]">
+                        <div className="bg-emerald-600 px-5 py-4 flex items-center justify-between text-white rounded-t-3xl">
+                          <h2 className="text-lg font-bold flex items-center gap-2">📖 Vocabulary</h2>
+                          <button onClick={() => setIsVocabOpen(false)} className="text-emerald-200 hover:text-white text-3xl leading-none px-2">&times;</button>
+                        </div>
+                        <div className="p-6 overflow-y-auto whitespace-pre-wrap font-ui text-slate-700 leading-relaxed text-sm md:text-base">
+                          {vocabInput}
+                        </div>
+                      </div>
+                    </div>
                   )}
+
+                  <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 sm:py-8 bg-slate-100">
+                    <div className="max-w-2xl mx-auto w-full">
+                      {dialogs.map((line, idx) => {
+                        const isCurrent = idx === currentIndex;
+                        const isPast = idx < currentIndex;
+                        const isNarration = line.type === 'narration';
+                        const isCurrentRecordLine = isRecordMode && isCurrent && !isReviewing && !isNarration;
+                        const isLeftSide = !isSpeakerOnRight(line.speaker);
+                        const speakerTheme = getSpeakerTheme(line.speaker);
+                        const bubbleStyle = {
+                          backgroundColor: isCurrent ? speakerTheme.currentBg : speakerTheme.bg,
+                          border: `1px solid ${speakerTheme.border}`,
+                          boxShadow: isCurrent
+                            ? `0 0 0 4px ${speakerTheme.ring}, 0 14px 28px -18px ${speakerTheme.shadow}`
+                            : `0 10px 20px -18px ${speakerTheme.shadow}`,
+                          color: '#1f2937'
+                        };
+
+                        if (isNarration) {
+                          return (
+                            <div
+                              key={line.id}
+                              id={`line-${idx}`}
+                              style={{ scrollMarginTop: '96px', scrollMarginBottom: '160px' }}
+                              className={`flex w-full justify-center mb-5 sm:mb-6 transition-opacity duration-500 ${isPlaying && !isCurrent && !isPast ? 'opacity-30' : 'opacity-100'}`}
+                            >
+                              <div className={`max-w-[90%] rounded-2xl px-4 py-3 text-center text-sm sm:text-base font-semibold tracking-wide border shadow-sm ${isCurrent ? 'bg-amber-100 border-amber-200 text-amber-800' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                                【{line.text}】
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div
+                            key={line.id}
+                            id={`line-${idx}`}
+                            style={{ scrollMarginTop: '96px', scrollMarginBottom: '160px' }}
+                            className={`flex w-full mb-6 sm:mb-8 ${isLeftSide ? 'justify-start' : 'justify-end'} transition-opacity duration-500 ${isPlaying && !isCurrent && !isPast ? 'opacity-30 grayscale-[50%]' : 'opacity-100'}`}
+                          >
+                            <div className="max-w-[85%] sm:max-w-[75%] rounded-[2rem] px-5 py-4 sm:px-7 sm:py-5 relative transition-all duration-300" style={bubbleStyle}>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-xs sm:text-sm font-bold uppercase tracking-wider" style={{ color: speakerTheme.label }}>
+                                  {line.speaker}
+                                </div>
+                                {isRecordMode && !isReviewing ? (
+                                  <div className="w-8 h-8" aria-hidden="true"></div>
+                                ) : (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); playSingleLineTTS(line); }}
+                                    className="p-1.5 rounded-full hover:bg-black/10 transition-colors"
+                                    style={{ color: speakerTheme.label }}
+                                    title="Listen to this line"
+                                  >
+                                    🔊
+                                  </button>
+                                )}
+                              </div>
+
+                              <div>
+                                <div className={`font-kyokasho text-xl sm:text-2xl font-semibold leading-relaxed tracking-wide transition-all duration-500 ${isRecordMode && !isReviewing ? 'record-hide-blur' : ''}`}>
+                                  {line.text}
+                                </div>
+                                {line.subTexts && line.subTexts.length > 0 && (
+                                  <div className="mt-3 pt-3 border-t text-sm sm:text-base" style={{ borderTopColor: speakerTheme.border, color: speakerTheme.subText }}>
+                                    {line.subTexts.map((st, i) => (
+                                      <div key={i} className={`mb-1.5 last:mb-0 leading-snug transition-all duration-500 ${isRecordMode && !isReviewing && i === 0 ? 'record-hide-blur-soft' : ''}`}>
+                                        {st}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {isCurrentRecordLine && status === 'manual_ready' && (
+                                <div className="mt-4 flex gap-3 justify-end font-ui">
+                                  <button onClick={handleManualMic} className="px-5 py-2 text-sm font-bold bg-white text-rose-700 hover:bg-rose-50 rounded-xl shadow-sm transition-colors flex items-center gap-1.5">
+                                    🎤 Start Recording
+                                  </button>
+                                  <button onClick={handleManualNext} className="px-5 py-2 text-sm font-bold bg-white text-indigo-700 hover:bg-indigo-50 rounded-xl shadow-sm transition-colors flex items-center gap-1.5">
+                                    ⏭️ Skip
+                                  </button>
+                                </div>
+                              )}
+
+                              {isCurrentRecordLine && status === 'recording' && (
+                                <div className="mt-4 flex gap-3 justify-end font-ui">
+                                  <button onClick={handleStopManualRecording} className="px-5 py-2 text-sm font-bold bg-white text-rose-700 hover:bg-rose-50 rounded-xl shadow-sm transition-colors flex items-center gap-1.5">
+                                    ⏹️ Stop Recording
+                                  </button>
+                                </div>
+                              )}
+
+                              {isCurrentRecordLine && status === 'ready_to_send' && recordedAudioMap[line.id] && (
+                                <div className="mt-4 flex gap-3 justify-end font-ui">
+                                  <button onClick={handleManualMic} className="px-4 py-2 text-sm font-bold bg-white/20 hover:bg-white/30 rounded-xl transition-colors flex items-center gap-1.5">
+                                    🎤 Retry
+                                  </button>
+                                  <button onClick={handleSend} className="px-5 py-2 text-sm font-bold bg-white text-emerald-700 hover:bg-emerald-50 rounded-xl shadow-sm transition-colors flex items-center gap-1.5">
+                                    ⏭️ OK
+                                  </button>
+                                </div>
+                              )}
+
+                              {isCurrent && (
+                                <div className={`absolute ${isLeftSide ? '-right-10' : '-left-10'} top-1/2 -translate-y-1/2 text-3xl animate-bounce drop-shadow-md`}>
+                                  {isRecordMode ? (status === 'recording' ? '🔴' : '🎤') : '🗣️'}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div className="h-10"></div>
+                    </div>
                   </div>
+
+                  <div className="bg-white border-t border-slate-200 p-4 sm:p-5 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] z-10">
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setPlayMode('listen')}
+                        disabled={isPlaying}
+                        className={`flex-1 min-w-[110px] rounded-xl border px-3 py-2 text-sm font-bold transition-all ${playMode === 'listen' ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'} ${isPlaying ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        ▶️ Listen
+                      </button>
+                      <button
+                        onClick={() => setPlayMode('record')}
+                        disabled={isPlaying}
+                        className={`flex-1 min-w-[110px] rounded-xl border px-3 py-2 text-sm font-bold transition-all ${playMode === 'record' ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'} ${isPlaying ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        🎙️ Role-play
+                      </button>
+                    </div>
+
+                    {!isPlaying && Object.keys(recordedAudioMap).length === 0 ? (
+                      <button onClick={handleStart} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 sm:py-4 rounded-xl shadow-md transition-all text-lg flex justify-center items-center gap-2">
+                        <span className="text-xl">{playMode === 'listen' ? '▶️' : '🎙️'}</span> {playMode === 'listen' ? 'Play All' : 'Start Role-play'}
+                      </button>
+                    ) : !isPlaying ? (
+                      <div className="flex flex-col gap-3">
+                        {!isTouchMobileDevice && (
+                          <button onClick={handleStart} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl shadow-sm transition-all text-base flex justify-center items-center gap-2">
+                            <span className="text-lg">▶️</span> Retry
+                          </button>
+                        )}
+                        {Object.keys(recordedAudioMap).length > 0 && (
+                          hasReviewedConversation ? (
+                            <button onClick={handleDownloadConversation} className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-3 rounded-xl shadow-sm transition-all text-base flex justify-center items-center gap-2">
+                              <span className="text-lg">💾</span> Download Conversation
+                            </button>
+                          ) : (
+                            <button onClick={handleReviewConversation} className="w-full bg-amber-500 hover:bg-amber-400 text-white font-bold py-3 rounded-xl shadow-sm transition-all text-base flex justify-center items-center gap-2">
+                              <span className="text-lg">🎧</span> Review Conversation
+                            </button>
+                          )
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-4">
+                        <div className="text-center font-bold text-slate-600 h-6 text-sm sm:text-base">
+                          {status === 'speaking' && <span className="text-blue-500 tracking-wide">AI is speaking... 🗣️</span>}
+                          {status === 'narration' && <span className="text-slate-500 tracking-wide">Scene note... ✨</span>}
+                          {status === 'manual_ready' && <span className="text-rose-500 tracking-wide">Tap Start Recording, speak the line, then Stop 🎤</span>}
+                          {status === 'recording' && <span className="text-rose-500 tracking-wide">Recording... tap Stop when you finish 🔴</span>}
+                          {status === 'ready_to_send' && <span className="text-emerald-600 tracking-wide">Review your take, then tap OK 👆</span>}
+                          {status === 'idle' && <span className="tracking-wide text-slate-400">Ready...</span>}
+                        </div>
+                        <div className="flex gap-3">
+                          <button onClick={handleStop} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+                            <span className="text-base">⏹️</span> Stop
+                          </button>
+                          {isRecordMode && status !== 'recording' && (
+                            <button onClick={handleManualNext} className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+                              <span className="text-base">⏭️</span> Skip
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-              )}
+                </div>
               </div>
-              </div>
-              </div>
-          )}
+            )}
           </>
         );
       }
-      
+
       const rootElement = document.getElementById('root');
       try {
         const root = ReactDOM.createRoot(rootElement);
         root.render(<App />);
-      } catch(err) {
+      } catch (err) {
         rootElement.innerHTML = '<div style="padding: 20px; color: red;">Failed to load App: ' + err.message + '</div>';
       }
     </script>
