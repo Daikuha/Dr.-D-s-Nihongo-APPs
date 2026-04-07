@@ -132,13 +132,8 @@
         "      const [isPlaying, setIsPlaying] = useState(false);\n" +
         "      const [currentIndex, setCurrentIndex] = useState(-1);\n" +
         "      const [status, setStatus] = useState('idle');\n" +
-        "      const [userRecords, setUserRecords] = useState({});\n" +
-        "      const [userName, setUserName] = useState('');\n" +
-        "      const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);\n" +
         "      const [isVocabOpen, setIsVocabOpen] = useState(false);\n" +
         "\n" +
-        "      const recognitionRef = useRef(null);\n" +
-        "      const isRecognizingRef = useRef(false);\n" +
         "      const synthRef = useRef(window.speechSynthesis);\n" +
         "\n" +
         "      const currentIndexRef = useRef(currentIndex);\n" +
@@ -147,66 +142,17 @@
         "      useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);\n" +
         "      const statusRef = useRef(status);\n" +
         "      useEffect(() => { statusRef.current = status; }, [status]);\n" +
-        "      const userRoleRef = useRef(userRole);\n" +
-        "      useEffect(() => { userRoleRef.current = userRole; }, [userRole]);\n" +
         "\n" +
         "      useEffect(() => { if ('speechSynthesis' in window) window.speechSynthesis.getVoices(); }, []);\n" +
         "\n" +
-        "      const startRecognition = () => {\n" +
-        "        if (recognitionRef.current && !isRecognizingRef.current && playMode !== 'listen') {\n" +
-        "          try { recognitionRef.current.start(); } catch(e) {}\n" +
-        "        }\n" +
-        "      };\n" +
-        "\n" +
-        "      const stopRecognition = () => {\n" +
-        "        if (recognitionRef.current && isRecognizingRef.current) {\n" +
-        "          try { recognitionRef.current.stop(); } catch(e) {}\n" +
-        "        }\n" +
-        "      };\n" +
-        "\n" +
-        "      const abortRecognition = () => {\n" +
-        "        if (recognitionRef.current) {\n" +
-        "          try { recognitionRef.current.abort(); } catch(e) {}\n" +
-        "          isRecognizingRef.current = false;\n" +
-        "        }\n" +
-        "      };\n" +
-        "\n" +
         "      useEffect(() => {\n" +
-        "        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;\n" +
-        "        if (SpeechRecognition) {\n" +
-        "          const recognition = new SpeechRecognition();\n" +
-        "          recognition.lang = 'ja-JP';\n" +
-        "          recognition.continuous = true;\n" +
-        "          recognition.interimResults = false;\n" +
-        "          recognition.onstart = () => { isRecognizingRef.current = true; };\n" +
-        "          recognition.onresult = (event) => {\n" +
-        "            if (!isPlayingRef.current) return;\n" +
-        "            const currentIdx = currentIndexRef.current;\n" +
-        "            const currentLine = dialogs[currentIdx];\n" +
-        "            const isMyTurn = currentLine && currentLine.speaker === userRoleRef.current;\n" +
-        "            if (statusRef.current === 'listening' && currentLine && isMyTurn) {\n" +
-        "              const text = event.results[event.resultIndex][0].transcript;\n" +
-        "              if (text.trim()) {\n" +
-        "                setUserRecords(prev => ({...prev, [currentIdx]: text}));\n" +
-        "                setStatus('ready_to_send');\n" +
-        "              }\n" +
-        "            }\n" +
-        "          };\n" +
-        "          recognition.onend = () => {\n" +
-        "            isRecognizingRef.current = false;\n" +
-        "            if (isPlayingRef.current && playMode !== 'listen') {\n" +
-        "              setTimeout(() => { if (isPlayingRef.current && statusRef.current === 'listening') startRecognition(); }, 100);\n" +
-        "            }\n" +
-        "          };\n" +
-        "          recognitionRef.current = recognition;\n" +
-        "        }\n" +
-        "        return () => { abortRecognition(); synthRef.current.cancel(); };\n" +
-        "      }, [playMode]);\n" +
+        "        return () => { synthRef.current.cancel(); };\n" +
+        "      }, []);\n" +
         "\n" +
         "      useEffect(() => {\n" +
         "        if (!isPlaying || dialogs.length === 0) return;\n" +
         "        if (currentIndex >= dialogs.length) {\n" +
-        "          setIsPlaying(false); setCurrentIndex(-1); setStatus('idle'); stopRecognition(); return;\n" +
+        "          setIsPlaying(false); setCurrentIndex(-1); setStatus('idle'); return;\n" +
         "        }\n" +
         "        const currentLine = dialogs[currentIndex];\n" +
         "        const el = document.getElementById('line-' + currentIndex);\n" +
@@ -215,7 +161,7 @@
         "        if (!isMyTurn) {\n" +
         "          setStatus('speaking'); playBrowserTTS(currentLine.text);\n" +
         "        } else {\n" +
-        "          setStatus('listening'); startRecognition();\n" +
+        "          setStatus('manual_ready');\n" +
         "        }\n" +
         "      }, [currentIndex, isPlaying, dialogs.length, userRole]);\n" +
         "\n" +
@@ -250,36 +196,11 @@
         "        }\n" +
         "      };\n" +
         "\n" +
-        "      const handleStart = () => { setUserRecords({}); setCurrentIndex(0); setIsPlaying(true); if (playMode !== 'listen') setTimeout(() => startRecognition(), 100); };\n" +
-        "      const handleStop = () => { setIsPlaying(false); setCurrentIndex(-1); setStatus('idle'); synthRef.current.cancel(); stopRecognition(); setIsModeMenuOpen(false); };\n" +
+        "      const handleStart = () => { setCurrentIndex(0); setIsPlaying(true); };\n" +
+        "      const handleStop = () => { setIsPlaying(false); setCurrentIndex(-1); setStatus('idle'); synthRef.current.cancel(); };\n" +
         "      const handleSend = () => { setStatus('idle'); if (isPlaying) setCurrentIndex(prev => prev + 1); };\n" +
         "      const handleManualNext = () => { synthRef.current.cancel(); setCurrentIndex(prev => prev + 1); };\n" +
-        "      const handleManualMic = () => { setUserRecords(prev => { const n = {...prev}; delete n[currentIndex]; return n; }); setStatus('listening'); };\n" +
         "\n" +
-        "      const handleDownloadRecord = () => {\n" +
-        "        const inputName = prompt(\"Please enter your name for the practice record:\", \"\");\n" +
-        "        if (inputName === null) return;\n" +
-        "        if (!inputName.trim()) { alert('Please enter your name before downloading.'); return; }\n" +
-        "        const safeTitle = appTitle.replace(/[\\\\s\\\\/:*?\"<>|]+/g, '_') || 'Roleplay';\n" +
-        "        const safeName = inputName.trim().replace(/[\\\\s\\\\/:*?\"<>|]+/g, '_');\n" +
-        "        const now = new Date();\n" +
-        "        const dateStr = now.getFullYear() + String(now.getMonth()+1).padStart(2,'0') + String(now.getDate()).padStart(2,'0') + '_' + String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');\n" +
-        "        let recordHtml = \"<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>\" + appTitle.replace(/</g, '&lt;').replace(/>/g, '&gt;') + \" - Practice Record - \" + inputName.replace(/</g, '&lt;').replace(/>/g, '&gt;') + \"</title><style>@import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap'); body { font-family: 'Noto Sans JP', sans-serif; max-width: 800px; margin: 0 auto; padding: 30px; line-height: 1.6; color: #334155; background-color: #f8fafc; } h1 { color: #059669; text-align: center; margin-bottom: 10px; } .header-info { text-align: center; color: #64748b; margin-bottom: 30px; } .record-block { border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 20px; background: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); } .speaker { font-weight: bold; color: #94a3b8; font-size: 0.9em; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; } .target { font-family: 'Klee One', 'UD Digi Kyokasho N-R', serif; font-size: 1.4em; font-weight: 600; margin-bottom: 8px; color: #0f172a; } .actual { background: #ecfdf5; padding: 15px; border-radius: 8px; color: #065f46; margin-top: 15px; border-left: 5px solid #10b981; } .actual strong { font-family: 'Klee One', 'UD Digi Kyokasho N-R', serif; font-size: 1.2em; display: block; margin-top: 5px; } .subtext { font-size: 0.95em; color: #64748b; }</style></head><body><h1>\" + appTitle.replace(/</g, '&lt;').replace(/>/g, '&gt;') + \" - Practice Record</h1><div class='header-info'><p><strong>Name:</strong> \" + inputName.replace(/</g, '&lt;').replace(/>/g, '&gt;') + \" | <strong>Role Played:</strong> \" + userRole + \" | <strong>Date:</strong> \" + new Date().toLocaleString() + \"</p></div><hr style='border:0; height:1px; background:#e2e8f0; margin-bottom: 30px;'/><div>\";\n" +
-        "        dialogs.forEach((d, i) => {\n" +
-        "            const isMyRole = d.speaker === userRole;\n" +
-        "            recordHtml += \"<div class='record-block'><div class='speaker'>\" + d.speaker + (isMyRole ? ' (You)' : '') + \"</div><div class='target'>\" + d.text + \"</div>\";\n" +
-        "            if (d.subTexts && d.subTexts.length > 0) recordHtml += \"<div class='subtext'>\" + d.subTexts.join('<br>') + \"</div>\";\n" +
-        "            if (isMyRole && userRecords[i]) recordHtml += \"<div class='actual'><span style='font-size:0.85em; opacity:0.8;'>🎤 Recognized:</span><strong>\" + userRecords[i] + \"</strong></div>\";\n" +
-        "            recordHtml += \"</div>\";\n" +
-        "        });\n" +
-        "        recordHtml += \"</div></body></html>\";\n" +
-        "        const blob = new Blob([recordHtml], { type: 'text/html' });\n" +
-        "        const url = URL.createObjectURL(blob);\n" +
-        "        const a = document.createElement('a');\n" +
-        "        a.href = url;\n" +
-        "        a.download = safeTitle + '_Record_' + safeName + '_' + dateStr + '.html';\n" +
-        "        a.click();\n" +
-        "      };\n" +
         "\n" +
         "      return (\n" +
         "        <div className=\"min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 sm:p-8\">\n" +
@@ -292,23 +213,6 @@
         "                    📖 Vocab\n" +
         "                  </button>\n" +
         "                )}\n" +
-        "                <div className=\"relative flex-shrink-0\">\n" +
-        "                  <button onClick={() => setIsModeMenuOpen(!isModeMenuOpen)} disabled={isPlaying} className=\"bg-emerald-800/40 hover:bg-emerald-800/60 p-2 sm:p-2.5 rounded-xl flex items-center justify-center text-white transition-all disabled:opacity-50\" title=\"Settings\">\n" +
-        "                    <span className=\"text-xl\">⚙️</span>\n" +
-        "                  </button>\n" +
-        "                  {isModeMenuOpen && (\n" +
-        "                    <div className=\"absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-xl overflow-hidden z-50 border border-emerald-100 flex flex-col text-slate-800\">\n" +
-        "                      <div className=\"p-2 bg-emerald-50 border-b border-emerald-100 font-bold text-xs text-emerald-800 uppercase tracking-widest\">Select Mode</div>\n" +
-        "                      <button onClick={() => { setPlayMode('listen'); setIsModeMenuOpen(false); }} className={\"p-3 text-left font-bold text-sm transition-colors \" + (playMode === 'listen' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50')}>🎧 Just Listen</button>\n" +
-        "                      {availableSpeakers.map(spk => (\n" +
-        "                        <React.Fragment key={spk}>\n" +
-        "                          <div className=\"h-px bg-slate-100 mx-2\"></div>\n" +
-        "                          <button onClick={() => { setPlayMode(spk); setIsModeMenuOpen(false); }} className={\"p-3 text-left font-bold text-sm transition-colors \" + (playMode === spk ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50')}>👤 Play Role {spk}</button>\n" +
-        "                        </React.Fragment>\n" +
-        "                      ))}\n" +
-        "                    </div>\n" +
-        "                  )}\n" +
-        "                </div>\n" +
         "              </div>\n" +
         "            </div>\n" +
         "\n" +
@@ -349,19 +253,12 @@
         "                            </div>\n" +
         "                          )}\n" +
         "                        </div>\n" +
-        "                        {isMyRole && userRecords[idx] && (\n" +
-        "                          <div className=\"mt-4 pt-4 border-t border-emerald-300/50 bg-emerald-700/20 rounded-xl p-4 text-white\">\n" +
-        "                            <span className=\"text-xs uppercase tracking-wider opacity-80 block mb-1.5 font-ui\">Recognized:</span>\n" +
-        "                            <div className=\"font-kyokasho font-semibold text-xl leading-relaxed\">{userRecords[idx]}</div>\n" +
-        "                          </div>\n" +
-        "                        )}\n" +
-        "                        {isMyRole && isCurrent && status === 'ready_to_send' && userRecords[idx] && (\n" +
+        "                        {isMyRole && isCurrent && status === 'manual_ready' && (\n" +
         "                          <div className=\"mt-4 flex gap-3 justify-end font-ui\">\n" +
-        "                            <button onClick={handleManualMic} className=\"px-4 py-2 text-sm font-bold bg-white/20 hover:bg-white/30 rounded-xl transition-colors flex items-center gap-1.5\">🎤 Retry</button>\n" +
-        "                            <button onClick={handleSend} className=\"px-5 py-2 text-sm font-bold bg-white text-emerald-700 hover:bg-emerald-50 rounded-xl shadow-sm transition-colors flex items-center gap-1.5\">⏭️ OK</button>\n" +
+        "                            <button onClick={handleSend} className=\"px-5 py-2 text-sm font-bold bg-white text-emerald-700 hover:bg-emerald-50 rounded-xl shadow-sm transition-colors flex items-center gap-1.5\">⏭️ Next</button>\n" +
         "                          </div>\n" +
         "                        )}\n" +
-        "                        {isCurrent && status !== 'ready_to_send' && (\n" +
+        "                        {isCurrent && status !== 'manual_ready' && (\n" +
         "                          <div className={\"absolute top-1/2 -translate-y-1/2 text-3xl animate-bounce drop-shadow-md \" + (isLeftSide ? '-right-10' : '-left-10')}>{isMyRole ? '🎤' : '🗣️'}</div>\n" +
         "                        )}\n" +
         "                      </div>\n" +
@@ -372,27 +269,21 @@
         "              </div>\n" +
         "            </div>\n" +
         "            <div className=\"bg-white border-t border-slate-200 p-4 sm:p-5 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] z-10\">\n" +
-        "              {!isPlaying && Object.keys(userRecords).length === 0 ? (\n" +
+        "              <div className=\"mb-4 flex flex-wrap gap-2\">\n" +
+        "                <button onClick={() => setPlayMode('listen')} disabled={isPlaying} className={\"flex-1 min-w-[110px] rounded-xl border px-3 py-2 text-sm font-bold transition-all \" + (playMode === 'listen' ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100') + (isPlaying ? ' opacity-50 cursor-not-allowed' : '')}>▶️ All</button>\n" +
+        "                {availableSpeakers.map((spk) => (\n" +
+        "                  <button key={spk} onClick={() => setPlayMode(spk)} disabled={isPlaying} className={\"flex-1 min-w-[110px] rounded-xl border px-3 py-2 text-sm font-bold transition-all \" + (playMode === spk ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100') + (isPlaying ? ' opacity-50 cursor-not-allowed' : '')}>👤 {spk}</button>\n" +
+        "                ))}\n" +
+        "              </div>\n" +
+        "              {!isPlaying ? (\n" +
         "                <button onClick={handleStart} className=\"w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 sm:py-4 rounded-xl shadow-md transition-all text-lg flex justify-center items-center gap-2\">\n" +
-        "                  <span className=\"text-xl\">▶️</span> Play\n" +
+        "                  <span className=\"text-xl\">▶️</span> {playMode === 'listen' ? 'Play All' : 'Play'}\n" +
         "                </button>\n" +
-        "              ) : !isPlaying ? (\n" +
-        "                <div className=\"flex flex-col gap-3\">\n" +
-        "                  <button onClick={handleStart} className=\"w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl shadow-sm transition-all text-base flex justify-center items-center gap-2\">\n" +
-        "                    <span className=\"text-lg\">▶️</span> Play Again\n" +
-        "                  </button>\n" +
-        "                  {playMode !== 'listen' && (\n" +
-        "                    <button onClick={handleDownloadRecord} className=\"w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-sm transition-all text-base flex justify-center items-center gap-2\">\n" +
-        "                      <span className=\"text-lg\">💾</span> Save Practice Record\n" +
-        "                    </button>\n" +
-        "                  )}\n" +
-        "                </div>\n" +
         "              ) : (\n" +
         "                <div className=\"flex flex-col gap-4\">\n" +
         "                  <div className=\"text-center font-bold text-slate-600 h-6 text-sm sm:text-base\">\n" +
         "                    {status === 'speaking' && <span className=\"text-blue-500 tracking-wide\">AI is speaking... 🗣️</span>}\n" +
-        "                    {status === 'listening' && <span className=\"text-rose-500 animate-pulse tracking-wide\">Your turn! Please speak 🎤</span>}\n" +
-        "                    {status === 'ready_to_send' && <span className=\"text-emerald-600 tracking-wide\">Review and click OK 👆</span>}\n" +
+        "                    {status === 'manual_ready' && <span className=\"text-rose-500 tracking-wide\">Your turn! Speak aloud, then tap Next 🎤</span>}\n" +
         "                    {status === 'idle' && <span className=\"tracking-wide text-slate-400\">Ready...</span>}\n" +
         "                  </div>\n" +
         "                  <div className=\"flex gap-3\">\n" +
@@ -401,11 +292,8 @@
         "                    </button>\n" +
         "                    {(dialogs[currentIndex]?.speaker === userRole) && (\n" +
         "                      <>\n" +
-        "                        {status === 'idle' && <button onClick={handleManualMic} className=\"flex-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2\">\n" +
-        "                          <span className=\"text-base\">🎤</span> Speak Again\n" +
-        "                        </button>}\n" +
         "                        <button onClick={handleManualNext} className=\"flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2\">\n" +
-        "                          <span className=\"text-base\">⏭️</span> Skip\n" +
+        "                          <span className=\"text-base\">⏭️</span> Next\n" +
         "                        </button>\n" +
         "                      </>\n" +
         "                    )}\n" +
@@ -444,23 +332,15 @@
         const [isPlaying, setIsPlaying] = useState(false);
         const [currentIndex, setCurrentIndex] = useState(-1);
         const [status, setStatus] = useState('idle'); 
-        const [userRecords, setUserRecords] = useState({});
-        const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
         const [isHowToUseOpen, setIsHowToUseOpen] = useState(false);
         const [isVocabOpen, setIsVocabOpen] = useState(false); // Vocabモーダル用State
         
-        const recognitionRef = useRef(null);
-        const isRecognizingRef = useRef(false);
         const synthRef = useRef(window.speechSynthesis);
         
         const currentIndexRef = useRef(currentIndex);
         const isPlayingRef = useRef(isPlaying);
         useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
         useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
-        const dialogsRef = useRef(dialogs);
-        useEffect(() => { dialogsRef.current = dialogs; }, [dialogs]);
-        const userRoleRef = useRef(userRole);
-        useEffect(() => { userRoleRef.current = userRole; }, [userRole]);
         const statusRef = useRef(status);
         useEffect(() => { statusRef.current = status; }, [status]);
         
@@ -470,73 +350,11 @@
             }
         }, []);
         
-        const startRecognition = () => {
-          if (recognitionRef.current && !isRecognizingRef.current && playMode !== 'listen') {
-            try { recognitionRef.current.start(); } catch(e) {}
-          }
-        };
-        
-        const stopRecognition = () => {
-          if (recognitionRef.current && isRecognizingRef.current) {
-            try { recognitionRef.current.stop(); } catch(e) {}
-          }
-        };
-        
-        const abortRecognition = () => {
-          if (recognitionRef.current) {
-            try { recognitionRef.current.abort(); } catch(e) {}
-            isRecognizingRef.current = false;
-          }
-        };
-        
         useEffect(() => {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (SpeechRecognition) {
-              const recognition = new SpeechRecognition();
-              recognition.lang = 'ja-JP';
-              recognition.continuous = true;
-              recognition.interimResults = false;
-              
-              recognition.onstart = () => {
-                isRecognizingRef.current = true;
-              };
-              
-              recognition.onresult = (event) => {
-                if (!isPlayingRef.current) return;
-                const currentIdx = currentIndexRef.current;
-                const currentLine = dialogsRef.current[currentIdx];
-                
-                const isMyTurn = currentLine && currentLine.speaker === userRoleRef.current;
-                
-                if (statusRef.current === 'listening' && currentLine && isMyTurn) {
-                  const resultIndex = event.resultIndex;
-                  const text = event.results[resultIndex][0].transcript;
-                  
-                  if (text.trim()) {
-                    setUserRecords(prev => ({...prev, [currentIdx]: text}));
-                    setStatus('ready_to_send');
-                  }
-                }
-              };
-              
-              recognition.onend = () => {
-                isRecognizingRef.current = false;
-                if (isPlayingRef.current && playMode !== 'listen') {
-                  setTimeout(() => {
-                      if (isPlayingRef.current && statusRef.current === 'listening') {
-                        startRecognition();
-                      }
-                  }, 100);
-                }
-              };
-              recognitionRef.current = recognition;
-            }
-            
             return () => {
-              abortRecognition();
               synthRef.current.cancel();
             };
-        }, [playMode]);
+        }, []);
         
         useEffect(() => {
             if (!isPlaying || dialogs.length === 0) return;
@@ -544,7 +362,6 @@
               setIsPlaying(false);
               setCurrentIndex(-1);
               setStatus('idle');
-              stopRecognition();
               return;
             }
             const currentLine = dialogs[currentIndex];
@@ -557,8 +374,7 @@
               setStatus('speaking');
               playBrowserTTS(currentLine.text);
             } else {
-              setStatus('listening');
-              startRecognition();
+              setStatus('manual_ready');
             }
         }, [currentIndex, isPlaying, dialogs.length, userRole]);
         
@@ -652,12 +468,8 @@
         };
         
         const handleStart = () => {
-          setUserRecords({});
           setCurrentIndex(0);
           setIsPlaying(true);
-          if (playMode !== 'listen') {
-            setTimeout(() => startRecognition(), 100);
-          }
         };
         
         const handleStop = () => {
@@ -665,8 +477,6 @@
           setCurrentIndex(-1);
           setStatus('idle');
           synthRef.current.cancel();
-          abortRecognition();
-          setIsModeMenuOpen(false);
         };
         
         const handleSend = () => {
@@ -679,84 +489,6 @@
         const handleManualNext = () => {
           synthRef.current.cancel();
           setCurrentIndex(prev => prev + 1);
-        };
-        
-        const handleManualMic = () => {
-          setUserRecords(prev => {
-              const newRecords = {...prev};
-              delete newRecords[currentIndex];
-              return newRecords;
-          });
-          setStatus('listening');
-        };
-        
-        const handleDownloadRecord = () => {
-          const inputName = prompt("Please enter your name for the practice record:", "");
-          if (inputName === null) {
-            return;
-          }
-          if (!inputName.trim()) {
-            alert("Please enter your name before downloading.");
-            return;
-          }
-          
-          const safeTitle = appTitle.replace(/[\s\\/:*?"<>|]+/g, '_') || 'Roleplay';
-          const safeName = inputName.trim().replace(/[\s\\/:*?"<>|]+/g, '_');
-          const now = new Date();
-          const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
-          
-          let recordHtml = `<!DOCTYPE html>
-          <html lang="en">
-          <head>
-          <meta charset="UTF-8">
-          <title>${appTitle} - Practice Record - ${inputName}</title>
-          <style>
-          @import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Noto+Sans+JP:wght@400;500;700&display=swap');
-          body { font-family: 'Noto Sans JP', sans-serif; max-width: 800px; margin: 0 auto; padding: 30px; line-height: 1.6; color: #334155; background-color: #f8fafc; }
-          h1 { color: #059669; text-align: center; margin-bottom: 10px; }
-          .header-info { text-align: center; color: #64748b; margin-bottom: 30px; }
-          .record-block { border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 20px; background: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
-          .speaker { font-weight: bold; color: #94a3b8; font-size: 0.9em; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-          .target { font-family: 'Klee One', 'UD Digi Kyokasho N-R', serif; font-size: 1.4em; font-weight: 600; margin-bottom: 8px; color: #0f172a; }
-          .actual { background: #ecfdf5; padding: 15px; border-radius: 8px; color: #065f46; margin-top: 15px; border-left: 5px solid #10b981; }
-          .actual strong { font-family: 'Klee One', 'UD Digi Kyokasho N-R', serif; font-size: 1.2em; display: block; margin-top: 5px; }
-          .subtext { font-size: 0.95em; color: #64748b; }
-          </style>
-          </head>
-          <body>
-          <h1>${appTitle} - Practice Record</h1>
-          <div class="header-info">
-          <p><strong>Name:</strong> ${inputName} | <strong>Role Played:</strong> ${playMode} | <strong>Date:</strong> ${now.toLocaleString()}</p>
-          </div>
-          <hr style="border:0; height:1px; background:#e2e8f0; margin-bottom: 30px;" />
-          <div>
-          `;
-          
-          dialogs.forEach((d, i) => {
-              const isMyRole = d.speaker === userRole;
-              recordHtml += `<div class="record-block">`;
-              recordHtml += `<div class="speaker">${d.speaker} ${isMyRole ? '(You)' : ''}</div>`;
-              recordHtml += `<div class="target">${d.text}</div>`;
-              if (d.subTexts && d.subTexts.length > 0) {
-                recordHtml += `<div class="subtext">${d.subTexts.join('<br>')}</div>`;
-              }
-              if (isMyRole && userRecords[i]) {
-                recordHtml += `<div class="actual"><span style="font-size:0.85em; opacity:0.8;">🎤 Recognized:</span><strong>${userRecords[i]}</strong></div>`;
-              }
-              recordHtml += `</div>`;
-          });
-          
-          recordHtml += `
-          </div>
-          </body>
-          </html>`;
-          
-          const blob = new Blob([recordHtml], { type: 'text/html' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `${safeTitle}_Record_${safeName}_${dateStr}.html`;
-          a.click();
         };
         
         return (
@@ -781,7 +513,7 @@
               </button>
               {isHowToUseOpen && (
                   <div className="p-4 pt-0">
-                  <p className="text-sm sm:text-base mb-2 opacity-90">Create a role-play practice app with AI voice reading and speech recognition.</p>
+                  <p className="text-sm sm:text-base mb-2 opacity-90">Create a simple role-play practice app with browser voice reading and tap-to-progress role-play.</p>
                   <ol className="list-decimal pl-6 opacity-90 space-y-2 text-sm sm:text-base mt-2">
                   <li>Input the Title of your role-play.</li>
                   <li>Input your conversation script below.</li>
@@ -789,7 +521,7 @@
                   <li>Use <code>A:</code> and <code>B:</code> to specify speakers, <strong>OR</strong> leave a blank line between turns.</li>
                   </ol>
                   <div className="mt-3 p-3 bg-white/60 rounded-lg text-sm border border-emerald-200">
-                  <strong>🔒 Privacy Notice:</strong> This app processes all speech recognition and text data locally on your device. We do not collect, store, or send any of your voice or text data to external servers.
+                  <strong>🔒 Privacy Notice:</strong> This app runs locally in your browser. We do not collect or send your practice data to external servers.
                   </div>
                   </div>
               )}
@@ -875,29 +607,6 @@
                   📖 Vocab
                   </button>
               )}
-              <div className="relative flex-shrink-0">
-              <button 
-              onClick={() => setIsModeMenuOpen(!isModeMenuOpen)} 
-              disabled={isPlaying}
-              className="bg-emerald-800/40 hover:bg-emerald-800/60 p-2 sm:p-2.5 rounded-xl flex items-center justify-center text-white font-bold transition-all disabled:opacity-50"
-              title="Settings"
-              >
-              <span className="text-xl">⚙️</span>
-              </button>
-              
-              {isModeMenuOpen && (
-                  <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-xl overflow-hidden z-50 border border-emerald-100 flex flex-col text-slate-800">
-                  <div className="p-2 bg-emerald-50 border-b border-emerald-100 font-bold text-xs text-emerald-800 uppercase tracking-widest">Select Mode</div>
-                  <button onClick={() => { setPlayMode('listen'); setIsModeMenuOpen(false); }} className={"p-3 text-left font-bold text-sm transition-colors " + (playMode === 'listen' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50')}>🎧 Just Listen</button>
-                  {availableSpeakers.map(spk => (
-                        <React.Fragment key={spk}>
-                        <div className="h-px bg-slate-100 mx-2"></div>
-                        <button onClick={() => { setPlayMode(spk); setIsModeMenuOpen(false); }} className={"p-3 text-left font-bold text-sm transition-colors " + (playMode === spk ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50')}>👤 Play Role {spk}</button>
-                        </React.Fragment>
-                  ))}
-                  </div>
-              )}
-              </div>
               </div>
               </div>
               
@@ -965,25 +674,15 @@
                       )}
                       </div>
                       
-                      {isMyRole && userRecords[idx] && (
-                          <div className="mt-4 pt-4 border-t border-emerald-300/50 bg-emerald-700/20 rounded-xl p-4 text-white">
-                          <span className="text-xs uppercase tracking-wider opacity-80 block mb-1.5 font-ui">Recognized:</span>
-                          <div className="font-kyokasho font-semibold text-xl leading-relaxed">{userRecords[idx]}</div>
-                          </div>
-                      )}
-                      
-                      {isMyRole && isCurrent && status === 'ready_to_send' && userRecords[idx] && (
+                      {isMyRole && isCurrent && status === 'manual_ready' && (
                           <div className="mt-4 flex gap-3 justify-end font-ui">
-                          <button onClick={handleManualMic} className="px-4 py-2 text-sm font-bold bg-white/20 hover:bg-white/30 rounded-xl transition-colors flex items-center gap-1.5">
-                          🎤 Retry
-                          </button>
                           <button onClick={handleSend} className="px-5 py-2 text-sm font-bold bg-white text-emerald-700 hover:bg-emerald-50 rounded-xl shadow-sm transition-colors flex items-center gap-1.5">
-                          ⏭️ OK
+                          ⏭️ Next
                           </button>
                           </div>
                       )}
                       
-                      {isCurrent && status !== 'ready_to_send' && (
+                      {isCurrent && status !== 'manual_ready' && (
                           <div className={`absolute ${isLeftSide ? '-right-10' : '-left-10'} top-1/2 -translate-y-1/2 text-3xl animate-bounce drop-shadow-md`}>
                           {isMyRole ? '🎤' : '🗣️'}
                           </div>
@@ -998,27 +697,34 @@
               
               {/* Controls (Footer) */}
               <div className="bg-white border-t border-slate-200 p-4 sm:p-5 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] z-10">
-              {!isPlaying && Object.keys(userRecords).length === 0 ? (
+              <div className="mb-4 flex flex-wrap gap-2">
+              <button
+              onClick={() => setPlayMode('listen')}
+              disabled={isPlaying}
+              className={`flex-1 min-w-[110px] rounded-xl border px-3 py-2 text-sm font-bold transition-all ${playMode === 'listen' ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'} ${isPlaying ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+              ▶️ All
+              </button>
+              {availableSpeakers.map((spk) => (
+                    <button
+                    key={spk}
+                    onClick={() => setPlayMode(spk)}
+                    disabled={isPlaying}
+                    className={`flex-1 min-w-[110px] rounded-xl border px-3 py-2 text-sm font-bold transition-all ${playMode === spk ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'} ${isPlaying ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                    👤 {spk}
+                    </button>
+              ))}
+              </div>
+              {!isPlaying ? (
                   <button onClick={handleStart} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 sm:py-4 rounded-xl shadow-md transition-all text-lg flex justify-center items-center gap-2">
-                  <span className="text-xl">▶️</span> Play
+                  <span className="text-xl">▶️</span> {playMode === 'listen' ? 'Play All' : 'Play'}
                   </button>
-                ) : !isPlaying ? (
-                  <div className="flex flex-col gap-3">
-                  <button onClick={handleStart} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl shadow-sm transition-all text-base flex justify-center items-center gap-2">
-                  <span className="text-lg">▶️</span> Play Again
-                  </button>
-                  {playMode !== 'listen' && (
-                      <button onClick={handleDownloadRecord} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-sm transition-all text-base flex justify-center items-center gap-2">
-                      <span className="text-lg">💾</span> Save Practice Record
-                      </button>
-                  )}
-                  </div>
                 ) : (
                   <div className="flex flex-col gap-4">
                   <div className="text-center font-bold text-slate-600 h-6 text-sm sm:text-base">
                   {status === 'speaking' && <span className="text-blue-500 tracking-wide">AI is speaking... 🗣️</span>}
-                  {status === 'listening' && <span className="text-rose-500 animate-pulse tracking-wide">Your turn! Please speak 🎤</span>}
-                  {status === 'ready_to_send' && <span className="text-emerald-600 tracking-wide">Review and click OK 👆</span>}
+                  {status === 'manual_ready' && <span className="text-rose-500 tracking-wide">Your turn! Speak aloud, then tap Next 🎤</span>}
                   {status === 'idle' && <span className="tracking-wide text-slate-400">Ready...</span>}
                   </div>
                   <div className="flex gap-3">
@@ -1026,16 +732,9 @@
                   <span className="text-base">⏹️</span> Stop
                   </button>
                   {(dialogs[currentIndex]?.speaker === userRole) && (
-                      <>
-                      {status === 'idle' && (
-                          <button onClick={handleManualMic} className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
-                          <span className="text-base">🎤</span> Speak Again
-                          </button>
-                      )}
                       <button onClick={handleManualNext} className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
-                      <span className="text-base">⏭️</span> Skip
+                      <span className="text-base">⏭️</span> Next
                       </button>
-                      </>
                   )}
                   </div>
                   </div>
