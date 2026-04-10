@@ -1,118 +1,118 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hiragana Shooter</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel for JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap');
-        .kyokasho-font { font-family: 'Klee One', serif; }
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Hiragana Shooter</title>
+        <!-- Tailwind CSS -->
+        <script src="https://cdn.tailwindcss.com"></script>
+        <!-- React & ReactDOM -->
+        <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+        <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+        <!-- Babel for JSX -->
+        <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+        <!-- Lucide Icons -->
+        <script src="https://unpkg.com/lucide@latest"></script>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap');
+            .kyokasho-font { font-family: 'Klee One', serif; }
+            
+            body {
+                background-color: #000;
+                margin: 0;
+                overflow: hidden;
+                user-select: none;
+                color: white;
+                font-family: sans-serif;
+                touch-action: none;
+            }
+            
+            .perspective-container {
+                perspective: 800px;
+                transform-style: preserve-3d;
+                width: 100vw;
+                height: 100vh;
+                position: relative;
+                overflow: hidden;
+            }
+            
+            .star {
+                position: absolute;
+                width: 2px;
+                height: 2px;
+                background: white;
+                border-radius: 50%;
+            }
+            
+            @keyframes fly {
+                0% { transform: translateZ(-4000px); opacity: 0; }
+                10% { opacity: 1; }
+                100% { transform: translateZ(500px); opacity: 0; }
+            }
+            
+            @keyframes shake {
+                0%, 100% { transform: translateX(0); }
+                20% { transform: translateX(-15px) rotate(-1deg); }
+                40% { transform: translateX(15px) rotate(1deg); }
+                60% { transform: translateX(-15px) rotate(-1deg); }
+                80% { transform: translateX(15px) rotate(1deg); }
+            }
+            .animate-shake { animation: shake 0.3s ease-in-out; }
+            
+            @keyframes explode {
+                0% { transform: translate(-50%, -50%) translate3d(0, 0, var(--start-z)) scale(1); opacity: 1; }
+                100% { transform: translate(-50%, -50%) translate3d(var(--dx), var(--dy), var(--start-z)) scale(0); opacity: 0; }
+            }
+            .animate-explode {
+                animation: explode 0.5s ease-out forwards;
+            }
+            
+            @keyframes shootBeam {
+                0% { bottom: 100px; transform: translateX(-50%) scaleY(1); opacity: 1; }
+                100% { bottom: 50%; transform: translateX(-50%) scaleY(6); opacity: 0; }
+            }
+            .beam {
+                position: absolute;
+                bottom: 120px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 24px;
+                height: 80px;
+                background: linear-gradient(to top, #fff, #22d3ee);
+                border-radius: 12px;
+                box-shadow: 0 0 30px #22d3ee, 0 0 60px #22d3ee;
+                animation: shootBeam 0.2s ease-in forwards;
+                z-index: 40;
+                transform-origin: bottom center;
+            }
+            
+            .enemy-panel {
+                will-change: transform;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="root"></div>
         
-        body {
-            background-color: #000;
-            margin: 0;
-            overflow: hidden;
-            user-select: none;
-            color: white;
-            font-family: sans-serif;
-            touch-action: none;
-        }
-
-        .perspective-container {
-            perspective: 800px;
-            transform-style: preserve-3d;
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .star {
-            position: absolute;
-            width: 2px;
-            height: 2px;
-            background: white;
-            border-radius: 50%;
-        }
-
-        @keyframes fly {
-            0% { transform: translateZ(-4000px); opacity: 0; }
-            10% { opacity: 1; }
-            100% { transform: translateZ(500px); opacity: 0; }
-        }
-
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            20% { transform: translateX(-15px) rotate(-1deg); }
-            40% { transform: translateX(15px) rotate(1deg); }
-            60% { transform: translateX(-15px) rotate(-1deg); }
-            80% { transform: translateX(15px) rotate(1deg); }
-        }
-        .animate-shake { animation: shake 0.3s ease-in-out; }
-
-        @keyframes explode {
-            0% { transform: translate(-50%, -50%) translate3d(0, 0, var(--start-z)) scale(1); opacity: 1; }
-            100% { transform: translate(-50%, -50%) translate3d(var(--dx), var(--dy), var(--start-z)) scale(0); opacity: 0; }
-        }
-        .animate-explode {
-            animation: explode 0.5s ease-out forwards;
-        }
-
-        @keyframes shootBeam {
-            0% { bottom: 100px; transform: translateX(-50%) scaleY(1); opacity: 1; }
-            100% { bottom: 50%; transform: translateX(-50%) scaleY(6); opacity: 0; }
-        }
-        .beam {
-            position: absolute;
-            bottom: 120px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 24px;
-            height: 80px;
-            background: linear-gradient(to top, #fff, #22d3ee);
-            border-radius: 12px;
-            box-shadow: 0 0 30px #22d3ee, 0 0 60px #22d3ee;
-            animation: shootBeam 0.2s ease-in forwards;
-            z-index: 40;
-            transform-origin: bottom center;
-        }
-
-        .enemy-panel {
-            will-change: transform;
-        }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
-
-    <script type="text/babel">
-        const { useState, useEffect, useCallback, useMemo, useRef } = React;
-
-        // --- ブラウザの音声認識対応チェック ---
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const hasSpeechRecognition = !!SpeechRecognition;
-
-        // --- Lucide Icon Component Helper ---
-        const Icon = ({ name, size = 24, className = "", fill = "none" }) => {
-            const iconData = useMemo(() => {
-                if (!window.lucide || !lucide.icons) return null;
-                const key = name.charAt(0).toLowerCase() + name.slice(1);
-                return lucide.icons[key] || lucide.icons[name] || lucide.icons[name.toLowerCase()];
-            }, [name]);
-
-            if (!iconData) return <span className={className} style={{ width: size, height: size, display: 'inline-block' }} />;
-
-            return (
-                <svg
+        <script type="text/babel">
+            const { useState, useEffect, useCallback, useMemo, useRef } = React;
+            
+            // --- ブラウザの音声認識対応チェック ---
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const hasSpeechRecognition = !!SpeechRecognition;
+            
+            // --- Lucide Icon Component Helper ---
+            const Icon = ({ name, size = 24, className = "", fill = "none" }) => {
+                const iconData = useMemo(() => {
+                        if (!window.lucide || !lucide.icons) return null;
+                        const key = name.charAt(0).toLowerCase() + name.slice(1);
+                        return lucide.icons[key] || lucide.icons[name] || lucide.icons[name.toLowerCase()];
+                }, [name]);
+                
+                if (!iconData) return <span className={className} style={{ width: size, height: size, display: 'inline-block' }} />;
+                
+                return (
+                    <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width={size}
                     height={size}
@@ -124,26 +124,26 @@
                     strokeLinejoin="round"
                     className={className}
                     dangerouslySetInnerHTML={{
-                        __html: iconData.map(([tag, attrs]) => {
-                            const attrStr = Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(" ");
-                            return `<${tag} ${attrStr} />`;
-                        }).join("")
+                            __html: iconData.map(([tag, attrs]) => {
+                                    const attrStr = Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(" ");
+                                    return `<${tag} ${attrStr} />`;
+                            }).join("")
                     }}
-                />
-            );
-        };
-
-        // --- ゲームデータ ---
-        const shuffleArray = (array) => {
-            const newArr = [...array];
-            for (let i = newArr.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
-            }
-            return newArr;
-        };
-
-        const WORDS = [
+                    />
+                );
+            };
+            
+            // --- ゲームデータ ---
+            const shuffleArray = (array) => {
+                const newArr = [...array];
+                for (let i = newArr.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+                }
+                return newArr;
+            };
+            
+            const WORDS = [
             { kana: 'あか', matches: ['あか', 'アカ', '赤'] },
             { kana: 'あお', matches: ['あお', 'アオ', '青'] },
             { kana: 'あき', matches: ['あき', 'アキ', '秋'] },
@@ -194,660 +194,684 @@
             { kana: 'じゅぎょう', matches: ['じゅぎょう', 'ジュギョウ', '授業'] },
             { kana: 'ざっし', matches: ['ざっし', 'ザッシ', '雑誌'] },
             { kana: 'きっぷ', matches: ['きっぷ', 'キップ', '切符'] }
-        ];
-
-        // --- 効果音 (Web Audio API) ---
-        const playSE = (ctx, type) => {
-            if (!ctx) return;
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
+            ];
             
-            if (type === 'beam') {
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(1200, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.2);
-                gain.gain.setValueAtTime(0.3, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
-                osc.start(); osc.stop(ctx.currentTime + 0.2);
-            } else if (type === 'damage') {
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(150, ctx.currentTime);
-                gain.gain.setValueAtTime(0.3, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-                osc.start(); osc.stop(ctx.currentTime + 0.3);
-            } else if (type === 'destroy') {
-                const bufferSize = ctx.sampleRate * 0.3;
-                const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-                const data = buffer.getChannelData(0);
-                for (let i = 0; i < bufferSize; i++) {
-                    data[i] = Math.random() * 2 - 1;
-                }
-                const noise = ctx.createBufferSource();
-                noise.buffer = buffer;
-                const filter = ctx.createBiquadFilter();
-                filter.type = 'lowpass';
-                filter.frequency.value = 1000;
-                noise.connect(filter);
-                filter.connect(gain);
-                gain.gain.setValueAtTime(0.4, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-                noise.start();
-                return;
-            } else if (type === 'danger') {
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(400, ctx.currentTime);
-                osc.frequency.setValueAtTime(600, ctx.currentTime + 0.2);
-                gain.gain.setValueAtTime(0.2, ctx.currentTime);
-                gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-                osc.start(); osc.stop(ctx.currentTime + 0.4);
-            }
-            osc.connect(gain); gain.connect(ctx.destination);
-        };
-
-        // --- 背景の星エフェクト ---
-        const Stars = () => {
-            const stars = useMemo(() => Array.from({length: 100}).map((_, i) => ({
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 3}s`,
-                animationDuration: `${1 + Math.random() * 2}s`
-            })), []);
-            
-            return (
-                <div className="absolute inset-0 pointer-events-none" style={{ transformStyle: 'preserve-3d' }}>
-                    {stars.map((s, i) => (
-                        <div key={i} className="star" style={{
-                            left: s.left, top: s.top, 
-                            animation: `fly ${s.animationDuration} infinite linear ${s.animationDelay}`
-                        }} />
-                    ))}
-                </div>
-            );
-        };
-
-        function App() {
-            const [gameState, setGameState] = useState('title'); // 'title', 'playing', 'gameover', 'victory'
-            const [userName, setUserName] = useState('');
-            const [difficulty, setDifficulty] = useState('easy'); 
-            const [maxWords, setMaxWords] = useState(10); 
-            const [lives, setLives] = useState(3);
-            const [score, setScore] = useState(0);
-            const [combo, setCombo] = useState(0);
-            const [destroyedCount, setDestroyedCount] = useState(0);
-            
-            const [currentWord, setCurrentWord] = useState(null);
-            const [isDamaged, setIsDamaged] = useState(false);
-            const [particles, setParticles] = useState([]);
-            const [isDangerMode, setIsDangerMode] = useState(false); 
-            
-            const [isListening, setIsListening] = useState(false);
-            const [spokenText, setSpokenText] = useState("");
-            const [showBeam, setShowBeam] = useState(false);
-
-            // --- Ref による安定した状態管理 (クロージャ対策) ---
-            const difficultyRef = useRef('easy');
-            const maxWordsRef = useRef(10);
-            const comboRef = useRef(0);
-            const isDangerModeRef = useRef(false);
-            const missedWordsRef = useRef(new Set()); 
-
-            const audioCtxRef = useRef(null);
-            const enemyZRef = useRef(-4000);
-            const enemyElRef = useRef(null);
-            const requestRef = useRef(null);
-            const speedRef = useRef(2); 
-            const isInvincibleRef = useRef(false);
-            const wordBagRef = useRef([]); 
-            const isExplodingRef = useRef(false); 
-            const isShootingRef = useRef(false);
-
-            const recognitionRef = useRef(null);
-            const currentWordRef = useRef(null);
-            const isPlayingRef = useRef(false);
-            const isListeningRef = useRef(false);
-            const fireBeamRef = useRef(null); 
-
-            useEffect(() => {
-                currentWordRef.current = currentWord;
-            }, [currentWord]);
-
-            useEffect(() => {
-                isPlayingRef.current = gameState === 'playing';
-            }, [gameState]);
-
-            const startRecognition = useCallback(() => {
-                if (recognitionRef.current && !isListeningRef.current) {
-                    isListeningRef.current = true;
-                    try {
-                        recognitionRef.current.start();
-                    } catch (e) {
-                        isListeningRef.current = false;
+            // --- 効果音 (Web Audio API) ---
+            const playSE = (ctx, type) => {
+                if (!ctx) return;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                
+                if (type === 'beam') {
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(1200, ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.2);
+                    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                    osc.start(); osc.stop(ctx.currentTime + 0.2);
+                } else if (type === 'damage') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(150, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                    osc.start(); osc.stop(ctx.currentTime + 0.3);
+                } else if (type === 'destroy') {
+                    const bufferSize = ctx.sampleRate * 0.3;
+                    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                    const data = buffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        data[i] = Math.random() * 2 - 1;
                     }
+                    const noise = ctx.createBufferSource();
+                    noise.buffer = buffer;
+                    const filter = ctx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.value = 1000;
+                    noise.connect(filter);
+                    filter.connect(gain);
+                    gain.gain.setValueAtTime(0.4, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                    noise.start();
+                    return;
+                } else if (type === 'danger') {
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(400, ctx.currentTime);
+                    osc.frequency.setValueAtTime(600, ctx.currentTime + 0.2);
+                    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+                    osc.start(); osc.stop(ctx.currentTime + 0.4);
                 }
-            }, []);
+                osc.connect(gain); gain.connect(ctx.destination);
+            };
+            
+            // --- 背景の星エフェクト ---
+            const Stars = () => {
+                const stars = useMemo(() => Array.from({length: 100}).map((_, i) => ({
+                                left: `${Math.random() * 100}%`,
+                                top: `${Math.random() * 100}%`,
+                                animationDelay: `${Math.random() * 3}s`,
+                                animationDuration: `${1 + Math.random() * 2}s`
+                })), []);
+                
+                return (
+                    <div className="absolute inset-0 pointer-events-none" style={{ transformStyle: 'preserve-3d' }}>
+                    {stars.map((s, i) => (
+                                <div key={i} className="star" style={{
+                                        left: s.left, top: s.top, 
+                                        animation: `fly ${s.animationDuration} infinite linear ${s.animationDelay}`
+                                }} />
+                    ))}
+                    </div>
+                );
+            };
+            
+            function App() {
+                const [gameState, setGameState] = useState('title'); // 'title', 'playing', 'gameover', 'victory'
+                const [userName, setUserName] = useState('');
+                const [difficulty, setDifficulty] = useState('easy'); 
+                const [maxWords, setMaxWords] = useState(10); 
+                const [lives, setLives] = useState(3);
+                const [score, setScore] = useState(0);
+                const [combo, setCombo] = useState(0);
+                const [destroyedCount, setDestroyedCount] = useState(0);
+                
+                const [currentWord, setCurrentWord] = useState(null);
+                const [isDamaged, setIsDamaged] = useState(false);
+                const [particles, setParticles] = useState([]);
+                const [isDangerMode, setIsDangerMode] = useState(false); 
+                
+                const [isListening, setIsListening] = useState(false);
+                const [spokenText, setSpokenText] = useState("");
+                const [showBeam, setShowBeam] = useState(false);
+                
+                // --- Ref による安定した状態管理 (クロージャ対策) ---
+                const difficultyRef = useRef('easy');
+                const maxWordsRef = useRef(10);
+                const comboRef = useRef(0);
+                const isDangerModeRef = useRef(false);
+                const missedWordsRef = useRef(new Set()); 
+                
+                const audioCtxRef = useRef(null);
+                const enemyZRef = useRef(-4000);
+                const enemyElRef = useRef(null);
+                const requestRef = useRef(null);
+                const speedRef = useRef(2); 
+                const isInvincibleRef = useRef(false);
+                const wordBagRef = useRef([]); 
+                const isExplodingRef = useRef(false); 
+                const isShootingRef = useRef(false);
+                
+                const recognitionRef = useRef(null);
+                const currentWordRef = useRef(null);
+                const isPlayingRef = useRef(false);
+                const isListeningRef = useRef(false);
+                const fireBeamRef = useRef(null); 
 
-            // --- 音声認識のセットアップ ---
-            useEffect(() => {
-                if (!hasSpeechRecognition) return;
+                useEffect(() => {
+                        const blockDefault = (event) => {
+                            event.preventDefault();
+                        };
 
-                const recognition = new SpeechRecognition();
-                recognition.lang = 'ja-JP';
-                recognition.interimResults = true; 
-                recognition.continuous = true;
+                        const blockShortcut = (event) => {
+                            const key = event.key.toLowerCase();
+                            if ((event.ctrlKey || event.metaKey) && (key === 's' || key === 'c')) {
+                                event.preventDefault();
+                                event.stopPropagation();
+                            }
+                        };
 
-                recognition.onresult = (event) => {
-                    let transcript = '';
-                    for (let i = event.resultIndex; i < event.results.length; ++i) {
-                        transcript += event.results[i][0].transcript;
+                        document.addEventListener('contextmenu', blockDefault, true);
+                        document.addEventListener('copy', blockDefault, true);
+                        window.addEventListener('keydown', blockShortcut, true);
+
+                        return () => {
+                            document.removeEventListener('contextmenu', blockDefault, true);
+                            document.removeEventListener('copy', blockDefault, true);
+                            window.removeEventListener('keydown', blockShortcut, true);
+                        };
+                }, []);
+                
+                useEffect(() => {
+                        currentWordRef.current = currentWord;
+                }, [currentWord]);
+                
+                useEffect(() => {
+                        isPlayingRef.current = gameState === 'playing';
+                }, [gameState]);
+                
+                const startRecognition = useCallback(() => {
+                        if (recognitionRef.current && !isListeningRef.current) {
+                            isListeningRef.current = true;
+                            try {
+                                recognitionRef.current.start();
+                            } catch (e) {
+                                isListeningRef.current = false;
+                            }
+                        }
+                }, []);
+                
+                // --- 音声認識のセットアップ ---
+                useEffect(() => {
+                        if (!hasSpeechRecognition) return;
+                        
+                        const recognition = new SpeechRecognition();
+                        recognition.lang = 'ja-JP';
+                        recognition.interimResults = true; 
+                        recognition.continuous = true;
+                        
+                        recognition.onresult = (event) => {
+                            let transcript = '';
+                            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                                transcript += event.results[i][0].transcript;
+                            }
+                            
+                            const cleanTranscript = transcript.replace(/\s+/g, '');
+                            setSpokenText(cleanTranscript);
+                            
+                            const word = currentWordRef.current;
+                            if (word && !isExplodingRef.current && !isShootingRef.current) {
+                                const isMatch = word.matches.some(m => cleanTranscript.includes(m));
+                                if (isMatch) {
+                                    recognition.stop();
+                                    if (fireBeamRef.current) fireBeamRef.current(); 
+                                }
+                            }
+                        };
+                        
+                        recognition.onstart = () => {
+                            setIsListening(true);
+                            isListeningRef.current = true;
+                        };
+                        
+                        recognition.onend = () => {
+                            setIsListening(false);
+                            isListeningRef.current = false;
+                            if (isPlayingRef.current && !isExplodingRef.current && !isShootingRef.current) {
+                                setTimeout(() => startRecognition(), 50);
+                            }
+                        };
+                        
+                        recognition.onerror = () => {
+                            setIsListening(false);
+                            isListeningRef.current = false;
+                        };
+                        
+                        recognitionRef.current = recognition;
+                }, [startRecognition]);
+                
+                const initAudio = () => {
+                    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                    if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+                };
+                
+                const spawnNextWord = useCallback(() => {
+                        if (wordBagRef.current.length === 0) {
+                            wordBagRef.current = shuffleArray(WORDS);
+                        }
+                        const nextWord = wordBagRef.current.pop();
+                        setCurrentWord(nextWord);
+                        setSpokenText("");
+                        enemyZRef.current = -4000;
+                        startRecognition();
+                }, [startRecognition]);
+                
+                const startGame = () => {
+                    initAudio();
+                    setLives(3);
+                    setScore(0);
+                    setCombo(0);
+                    comboRef.current = 0;
+                    setDestroyedCount(0);
+                    missedWordsRef.current.clear(); 
+                    
+                    let initialSpeed = 6; 
+                    let targetWords = 20;
+                    if (difficulty === 'easy') {
+                        initialSpeed = 2; 
+                        targetWords = 10;
+                    } else if (difficulty === 'hard') {
+                        initialSpeed = 10; 
+                        targetWords = 30;
                     }
                     
-                    const cleanTranscript = transcript.replace(/\s+/g, '');
-                    setSpokenText(cleanTranscript);
-
-                    const word = currentWordRef.current;
-                    if (word && !isExplodingRef.current && !isShootingRef.current) {
-                        const isMatch = word.matches.some(m => cleanTranscript.includes(m));
-                        if (isMatch) {
-                            recognition.stop();
-                            if (fireBeamRef.current) fireBeamRef.current(); 
-                        }
-                    }
+                    setMaxWords(targetWords);
+                    maxWordsRef.current = targetWords;
+                    difficultyRef.current = difficulty;
+                    speedRef.current = initialSpeed;
+                    
+                    wordBagRef.current = [];
+                    setIsDangerMode(false);
+                    isDangerModeRef.current = false;
+                    isExplodingRef.current = false;
+                    isShootingRef.current = false;
+                    setGameState('playing');
+                    spawnNextWord();
                 };
-
-                recognition.onstart = () => {
-                    setIsListening(true);
-                    isListeningRef.current = true;
-                };
-
-                recognition.onend = () => {
-                    setIsListening(false);
-                    isListeningRef.current = false;
-                    if (isPlayingRef.current && !isExplodingRef.current && !isShootingRef.current) {
-                        setTimeout(() => startRecognition(), 50);
-                    }
-                };
-
-                recognition.onerror = () => {
-                    setIsListening(false);
-                    isListeningRef.current = false;
-                };
-
-                recognitionRef.current = recognition;
-            }, [startRecognition]);
-
-            const initAudio = () => {
-                if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-                if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
-            };
-
-            const spawnNextWord = useCallback(() => {
-                if (wordBagRef.current.length === 0) {
-                    wordBagRef.current = shuffleArray(WORDS);
-                }
-                const nextWord = wordBagRef.current.pop();
-                setCurrentWord(nextWord);
-                setSpokenText("");
-                enemyZRef.current = -4000;
-                startRecognition();
-            }, [startRecognition]);
-
-            const startGame = () => {
-                initAudio();
-                setLives(3);
-                setScore(0);
-                setCombo(0);
-                comboRef.current = 0;
-                setDestroyedCount(0);
-                missedWordsRef.current.clear(); 
-
-                let initialSpeed = 6; 
-                let targetWords = 20;
-                if (difficulty === 'easy') {
-                    initialSpeed = 2; 
-                    targetWords = 10;
-                } else if (difficulty === 'hard') {
-                    initialSpeed = 10; 
-                    targetWords = 30;
-                }
                 
-                setMaxWords(targetWords);
-                maxWordsRef.current = targetWords;
-                difficultyRef.current = difficulty;
-                speedRef.current = initialSpeed;
-
-                wordBagRef.current = [];
-                setIsDangerMode(false);
-                isDangerModeRef.current = false;
-                isExplodingRef.current = false;
-                isShootingRef.current = false;
-                setGameState('playing');
-                spawnNextWord();
-            };
-
-            const destroyEnemy = useCallback(() => {
-                // 安全装置: 既に爆発演出中なら無視（1単語に対する2重カウントを防止）
-                if (isExplodingRef.current) return;
-                
-                const currentDifficulty = difficultyRef.current;
-                const currentMaxWords = maxWordsRef.current;
-                
-                isExplodingRef.current = true; 
-
-                const z = enemyZRef.current;
-                const newParticles = Array.from({ length: 20 }).map((_, i) => ({
-                    id: Date.now() + i,
-                    z: z,
-                    dx: (Math.random() - 0.5) * 600,
-                    dy: (Math.random() - 0.5) * 600,
-                }));
-                setParticles(newParticles);
-                setTimeout(() => setParticles([]), 500);
-
-                setScore(prev => prev + 100 + comboRef.current * 10);
-                setCombo(prev => {
-                    const next = prev + 1;
-                    comboRef.current = next;
-                    return next;
-                });
-                playSE(audioCtxRef.current, 'destroy');
-
-                setTimeout(() => {
-                    setDestroyedCount(prev => {
-                        const nextCount = prev + 1;
+                const destroyEnemy = useCallback(() => {
+                        // 安全装置: 既に爆発演出中なら無視（1単語に対する2重カウントを防止）
+                        if (isExplodingRef.current) return;
                         
-                        // クリア判定
-                        if (nextCount >= currentMaxWords) {
-                            // 最後の単語もしっかり爆発を見せてから1.5秒後にクリア画面へ（setCurrentWord(null)はしない）
-                            setTimeout(() => setGameState('victory'), 1500);
-                            return nextCount;
+                        const currentDifficulty = difficultyRef.current;
+                        const currentMaxWords = maxWordsRef.current;
+                        
+                        isExplodingRef.current = true; 
+                        
+                        const z = enemyZRef.current;
+                        const newParticles = Array.from({ length: 20 }).map((_, i) => ({
+                                    id: Date.now() + i,
+                                    z: z,
+                                    dx: (Math.random() - 0.5) * 600,
+                                    dy: (Math.random() - 0.5) * 600,
+                        }));
+                        setParticles(newParticles);
+                        setTimeout(() => setParticles([]), 500);
+                        
+                        setScore(prev => prev + 100 + comboRef.current * 10);
+                        setCombo(prev => {
+                                const next = prev + 1;
+                                comboRef.current = next;
+                                return next;
+                        });
+                        playSE(audioCtxRef.current, 'destroy');
+                        
+                        setTimeout(() => {
+                                setDestroyedCount(prev => {
+                                        const nextCount = prev + 1;
+                                        
+                                        // クリア判定
+                                        if (nextCount >= currentMaxWords) {
+                                            // 最後の単語もしっかり爆発を見せてから1.5秒後にクリア画面へ（setCurrentWord(null)はしない）
+                                            setTimeout(() => setGameState('victory'), 1500);
+                                            return nextCount;
+                                        }
+                                        
+                                        // 敵を倒すたびに少しずつ滑らかにスピードアップ
+                                        const baseSpeed = currentDifficulty === 'easy' ? 2 : (currentDifficulty === 'hard' ? 10 : 6);
+                                        const speedInc = currentDifficulty === 'easy' ? 0.2 : (currentDifficulty === 'hard' ? 0.4 : 0.3);
+                                        speedRef.current = baseSpeed + (nextCount * speedInc);
+                                        
+                                        // 終盤のDanger Mode判定
+                                        if (nextCount >= currentMaxWords - (currentDifficulty === 'easy' ? 2 : 5)) { 
+                                            if (!isDangerModeRef.current) {
+                                                setIsDangerMode(true);
+                                                isDangerModeRef.current = true;
+                                                playSE(audioCtxRef.current, 'danger');
+                                            }
+                                        }
+                                        
+                                        spawnNextWord();
+                                        isExplodingRef.current = false;
+                                        return nextCount;
+                                });
+                        }, 200);
+                }, [spawnNextWord]);
+                
+                const fireBeam = useCallback(() => {
+                        if (isShootingRef.current) return;
+                        isShootingRef.current = true;
+                        setShowBeam(true);
+                        playSE(audioCtxRef.current, 'beam');
+                        
+                        setTimeout(() => {
+                                setShowBeam(false);
+                                destroyEnemy();
+                                isShootingRef.current = false;
+                                setSpokenText('');
+                        }, 200);
+                }, [destroyEnemy]);
+                
+                useEffect(() => {
+                        fireBeamRef.current = fireBeam;
+                }, [fireBeam]);
+                
+                const takeDamage = useCallback(() => {
+                        if (isInvincibleRef.current) return;
+                        
+                        if (isListeningRef.current && recognitionRef.current) {
+                            recognitionRef.current.stop();
                         }
-
-                        // 敵を倒すたびに少しずつ滑らかにスピードアップ
-                        const baseSpeed = currentDifficulty === 'easy' ? 2 : (currentDifficulty === 'hard' ? 10 : 6);
-                        const speedInc = currentDifficulty === 'easy' ? 0.2 : (currentDifficulty === 'hard' ? 0.4 : 0.3);
-                        speedRef.current = baseSpeed + (nextCount * speedInc);
-
-                        // 終盤のDanger Mode判定
-                        if (nextCount >= currentMaxWords - (currentDifficulty === 'easy' ? 2 : 5)) { 
-                            if (!isDangerModeRef.current) {
-                                setIsDangerMode(true);
-                                isDangerModeRef.current = true;
-                                playSE(audioCtxRef.current, 'danger');
+                        
+                        if (currentWordRef.current) {
+                            missedWordsRef.current.add(currentWordRef.current.kana);
+                        }
+                        
+                        setLives(prev => {
+                                const next = prev - 1;
+                                if (next <= 0) setGameState('gameover');
+                                return next;
+                        });
+                        setCombo(0);
+                        comboRef.current = 0;
+                        playSE(audioCtxRef.current, 'damage');
+                        setIsDamaged(true);
+                        isInvincibleRef.current = true;
+                        
+                        setTimeout(() => {
+                                setIsDamaged(false);
+                                isInvincibleRef.current = false;
+                        }, 400); 
+                }, []);
+                
+                const update = useCallback(() => {
+                        if (gameState !== 'playing') return;
+                        
+                        if (!isExplodingRef.current && !isShootingRef.current) {
+                            enemyZRef.current += speedRef.current;
+                            
+                            if (enemyZRef.current > 300) {
+                                takeDamage();
+                                spawnNextWord();
+                            } else if (enemyElRef.current) {
+                                enemyElRef.current.style.transform = `translate(-50%, -50%) translateZ(${enemyZRef.current}px)`;
                             }
                         }
                         
-                        spawnNextWord();
-                        isExplodingRef.current = false;
-                        return nextCount;
-                    });
-                }, 200);
-            }, [spawnNextWord]);
-
-            const fireBeam = useCallback(() => {
-                if (isShootingRef.current) return;
-                isShootingRef.current = true;
-                setShowBeam(true);
-                playSE(audioCtxRef.current, 'beam');
+                        requestRef.current = requestAnimationFrame(update);
+                }, [gameState, takeDamage, spawnNextWord]);
                 
-                setTimeout(() => {
-                    setShowBeam(false);
-                    destroyEnemy();
-                    isShootingRef.current = false;
-                    setSpokenText('');
-                }, 200);
-            }, [destroyEnemy]);
-
-            useEffect(() => {
-                fireBeamRef.current = fireBeam;
-            }, [fireBeam]);
-
-            const takeDamage = useCallback(() => {
-                if (isInvincibleRef.current) return;
-                
-                if (isListeningRef.current && recognitionRef.current) {
-                    recognitionRef.current.stop();
-                }
-
-                if (currentWordRef.current) {
-                    missedWordsRef.current.add(currentWordRef.current.kana);
-                }
-
-                setLives(prev => {
-                    const next = prev - 1;
-                    if (next <= 0) setGameState('gameover');
-                    return next;
-                });
-                setCombo(0);
-                comboRef.current = 0;
-                playSE(audioCtxRef.current, 'damage');
-                setIsDamaged(true);
-                isInvincibleRef.current = true;
-                
-                setTimeout(() => {
-                    setIsDamaged(false);
-                    isInvincibleRef.current = false;
-                }, 400); 
-            }, []);
-
-            const update = useCallback(() => {
-                if (gameState !== 'playing') return;
-                
-                if (!isExplodingRef.current && !isShootingRef.current) {
-                    enemyZRef.current += speedRef.current;
-                    
-                    if (enemyZRef.current > 300) {
-                        takeDamage();
-                        spawnNextWord();
-                    } else if (enemyElRef.current) {
-                        enemyElRef.current.style.transform = `translate(-50%, -50%) translateZ(${enemyZRef.current}px)`;
-                    }
-                }
-                
-                requestRef.current = requestAnimationFrame(update);
-            }, [gameState, takeDamage, spawnNextWord]);
-
-            useEffect(() => {
-                if (gameState === 'playing') {
-                    requestRef.current = requestAnimationFrame(update);
-                }
-                return () => cancelAnimationFrame(requestRef.current);
-            }, [gameState, update]);
-
-            // --- 成績表のダウンロード ---
-            const downloadCertificate = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = 800;
-                
-                const missedArr = Array.from(missedWordsRef.current);
-                let missedTextLines = [];
-                if (missedArr.length > 0) {
-                    let currentLine = '';
-                    missedArr.forEach(word => {
-                        if (currentLine.length + word.length > 25) { 
-                            missedTextLines.push(currentLine);
-                            currentLine = word + ', ';
-                        } else {
-                            currentLine += word + ', ';
+                useEffect(() => {
+                        if (gameState === 'playing') {
+                            requestRef.current = requestAnimationFrame(update);
                         }
+                        return () => cancelAnimationFrame(requestRef.current);
+                }, [gameState, update]);
+                
+                // --- 成績表のダウンロード ---
+                const downloadCertificate = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 800;
+                    
+                    const missedArr = Array.from(missedWordsRef.current);
+                    let missedTextLines = [];
+                    if (missedArr.length > 0) {
+                        let currentLine = '';
+                        missedArr.forEach(word => {
+                                if (currentLine.length + word.length > 25) { 
+                                    missedTextLines.push(currentLine);
+                                    currentLine = word + ', ';
+                                } else {
+                                    currentLine += word + ', ';
+                                }
+                        });
+                        if (currentLine) missedTextLines.push(currentLine.replace(/, $/, ''));
+                    } else {
+                        missedTextLines.push('None (Perfect!)');
+                    }
+                    
+                    canvas.height = 600 + missedTextLines.length * 40; 
+                    const ctx = canvas.getContext('2d');
+                    
+                    ctx.fillStyle = '#0f172a'; 
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    ctx.strokeStyle = '#22d3ee'; 
+                    ctx.lineWidth = 10;
+                    ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+                    ctx.strokeStyle = '#0284c7'; 
+                    ctx.lineWidth = 4;
+                    ctx.strokeRect(36, 36, canvas.width - 72, canvas.height - 72);
+                    
+                    ctx.fillStyle = '#22d3ee';
+                    ctx.font = 'bold 50px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Voice Shooter Record', canvas.width / 2, 120);
+                    
+                    ctx.fillStyle = '#cbd5e1'; 
+                    ctx.font = '30px sans-serif';
+                    ctx.fillText('Pilot Name:', canvas.width / 2, 220);
+                    
+                    ctx.fillStyle = '#fde047'; 
+                    ctx.font = 'bold 60px sans-serif';
+                    ctx.fillText(userName || 'Player', canvas.width / 2, 300);
+                    
+                    ctx.fillStyle = '#cbd5e1';
+                    ctx.font = '30px sans-serif';
+                    
+                    const modeText = difficultyRef.current.toUpperCase();
+                    ctx.fillText(`Mode: ${modeText}`, canvas.width / 2, 380);
+                    ctx.fillText(`Words Destroyed: ${destroyedCount} / ${maxWordsRef.current}`, canvas.width / 2, 430);
+                    ctx.fillText(`Final Score: ${score}`, canvas.width / 2, 480);
+                    
+                    ctx.fillStyle = '#f87171';
+                    ctx.font = '24px sans-serif';
+                    ctx.fillText('Missed Words:', canvas.width / 2, 540);
+                    
+                    ctx.fillStyle = '#cbd5e1';
+                    missedTextLines.forEach((line, index) => {
+                            ctx.fillText(line, canvas.width / 2, 580 + index * 35);
                     });
-                    if (currentLine) missedTextLines.push(currentLine.replace(/, $/, ''));
-                } else {
-                    missedTextLines.push('None (Perfect!)');
-                }
-
-                canvas.height = 600 + missedTextLines.length * 40; 
-                const ctx = canvas.getContext('2d');
-
-                ctx.fillStyle = '#0f172a'; 
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                ctx.strokeStyle = '#22d3ee'; 
-                ctx.lineWidth = 10;
-                ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
-                ctx.strokeStyle = '#0284c7'; 
-                ctx.lineWidth = 4;
-                ctx.strokeRect(36, 36, canvas.width - 72, canvas.height - 72);
-
-                ctx.fillStyle = '#22d3ee';
-                ctx.font = 'bold 50px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText('Voice Shooter Record', canvas.width / 2, 120);
-
-                ctx.fillStyle = '#cbd5e1'; 
-                ctx.font = '30px sans-serif';
-                ctx.fillText('Pilot Name:', canvas.width / 2, 220);
-
-                ctx.fillStyle = '#fde047'; 
-                ctx.font = 'bold 60px sans-serif';
-                ctx.fillText(userName || 'Player', canvas.width / 2, 300);
-
-                ctx.fillStyle = '#cbd5e1';
-                ctx.font = '30px sans-serif';
+                    
+                    const finalY = 580 + missedTextLines.length * 35 + 40;
+                    const isClear = destroyedCount >= maxWordsRef.current;
+                    ctx.fillStyle = isClear ? '#4ade80' : '#fbbf24'; 
+                    ctx.font = 'bold 45px sans-serif';
+                    ctx.fillText(isClear ? 'MISSION CLEAR!' : 'GOOD EFFORT!', canvas.width / 2, finalY);
+                    
+                    const url = canvas.toDataURL('image/png');
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${userName || 'Pilot'}_VoiceShooter_Record.png`;
+                    a.click();
+                };
                 
-                const modeText = difficultyRef.current.toUpperCase();
-                ctx.fillText(`Mode: ${modeText}`, canvas.width / 2, 380);
-                ctx.fillText(`Words Destroyed: ${destroyedCount} / ${maxWordsRef.current}`, canvas.width / 2, 430);
-                ctx.fillText(`Final Score: ${score}`, canvas.width / 2, 480);
-
-                ctx.fillStyle = '#f87171';
-                ctx.font = '24px sans-serif';
-                ctx.fillText('Missed Words:', canvas.width / 2, 540);
-                
-                ctx.fillStyle = '#cbd5e1';
-                missedTextLines.forEach((line, index) => {
-                    ctx.fillText(line, canvas.width / 2, 580 + index * 35);
-                });
-
-                const finalY = 580 + missedTextLines.length * 35 + 40;
-                const isClear = destroyedCount >= maxWordsRef.current;
-                ctx.fillStyle = isClear ? '#4ade80' : '#fbbf24'; 
-                ctx.font = 'bold 45px sans-serif';
-                ctx.fillText(isClear ? 'MISSION CLEAR!' : 'GOOD EFFORT!', canvas.width / 2, finalY);
-
-                const url = canvas.toDataURL('image/png');
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${userName || 'Pilot'}_VoiceShooter_Record.png`;
-                a.click();
-            };
-
-            // --- 非対応ブラウザのガード ---
-            if (!hasSpeechRecognition) {
-                return (
-                    <div className="w-full h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-6 text-center">
+                // --- 非対応ブラウザのガード ---
+                if (!hasSpeechRecognition) {
+                    return (
+                        <div className="w-full h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-6 text-center">
                         <Icon name="MicOff" size={100} className="text-red-500 mb-8 animate-pulse" />
                         <h1 className="text-4xl font-bold mb-4 text-red-400">Speech Recognition Not Supported</h1>
                         <p className="text-slate-400 text-lg leading-relaxed max-w-lg">
-                            Your browser does not support the Web Speech API required for this game.<br/><br/>
-                            Please use <span className="text-yellow-400 font-bold">Google Chrome</span> or <span className="text-yellow-400 font-bold">Microsoft Edge</span>.
+                        Your browser does not support the Web Speech API required for this game.<br/><br/>
+                        Please use <span className="text-yellow-400 font-bold">Google Chrome</span> or <span className="text-yellow-400 font-bold">Microsoft Edge</span>.
                         </p>
-                    </div>
-                );
-            }
-
-            // --- Views ---
-
-            const renderTitleScreen = () => (
-                <div className="flex flex-col items-center justify-center h-full text-center relative z-10 animate-in fade-in duration-500 p-4">
+                        </div>
+                    );
+                }
+                
+                // --- Views ---
+                
+                const renderTitleScreen = () => (
+                    <div className="flex flex-col items-center justify-center h-full text-center relative z-10 animate-in fade-in duration-500 p-4">
                     <div className="relative">
-                        <Icon name="Mic" size={100} className="text-cyan-400 mb-8 animate-bounce relative z-10" />
-                        <div className="absolute inset-0 bg-cyan-500 blur-3xl opacity-30 z-0"></div>
+                    <Icon name="Mic" size={100} className="text-cyan-400 mb-8 animate-bounce relative z-10" />
+                    <div className="absolute inset-0 bg-cyan-500 blur-3xl opacity-30 z-0"></div>
                     </div>
                     
                     <h1 className="text-5xl md:text-7xl font-black italic mb-4 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-600">
-                        VOICE SHOOTER
+                    VOICE SHOOTER
                     </h1>
                     <p className="text-slate-400 font-mono tracking-widest mb-8 uppercase text-sm md:text-base">
-                        Speak clearly to destroy the targets!
+                    Speak clearly to destroy the targets!
                     </p>
                     
                     <div className="flex flex-col items-center gap-4 w-full max-w-sm">
-                        <div className="flex justify-center gap-2 w-full mb-2">
-                            {['easy', 'normal', 'hard'].map(level => (
+                    <div className="flex justify-center gap-2 w-full mb-2">
+                    {['easy', 'normal', 'hard'].map(level => (
                                 <button
-                                    key={level}
-                                    onClick={() => setDifficulty(level)}
-                                    className={`flex-1 py-3 rounded-xl font-black uppercase tracking-widest transition-all ${difficulty === level ? 'bg-cyan-500 text-white shadow-[0_0_15px_rgba(34,211,238,0.5)]' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                                key={level}
+                                onClick={() => setDifficulty(level)}
+                                className={`flex-1 py-3 rounded-xl font-black uppercase tracking-widest transition-all ${difficulty === level ? 'bg-cyan-500 text-white shadow-[0_0_15px_rgba(34,211,238,0.5)]' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
                                 >
-                                    {level}
-                                    <div className="text-[10px] opacity-70 mt-1 font-sans font-medium tracking-normal">
-                                        {level === 'easy' ? '10 Words / Slow' : level === 'normal' ? '20 Words / Normal' : '30 Words / Fast'}
-                                    </div>
+                                {level}
+                                <div className="text-[10px] opacity-70 mt-1 font-sans font-medium tracking-normal">
+                                {level === 'easy' ? '10 Words / Slow' : level === 'normal' ? '20 Words / Normal' : '30 Words / Fast'}
+                                </div>
                                 </button>
-                            ))}
-                        </div>
-
-                        <input 
-                            type="text" 
-                            placeholder="Enter your pilot name" 
-                            value={userName}
-                            onChange={(e) => setUserName(e.target.value)}
-                            className="w-full text-center text-xl p-4 bg-slate-800 text-white border-2 border-cyan-500/50 rounded-xl focus:outline-none focus:border-cyan-400 transition shadow-inner placeholder-slate-500"
-                        />
-                        <button 
-                            onClick={startGame}
-                            disabled={!userName.trim()}
-                            className={`w-full py-5 text-2xl font-black rounded-xl transition-all shadow-lg flex items-center justify-center gap-3
-                                ${!userName.trim() 
-                                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed' 
-                                    : 'bg-cyan-600 text-white hover:bg-cyan-500 active:scale-95 shadow-[0_0_30px_rgba(34,211,238,0.5)]'}`}
-                        >
-                            <Icon name="Play" size={28} /> START MISSION
-                        </button>
-                        <p className="text-xs text-slate-500 mt-2">* Please "Allow" microphone access if prompted.</p>
+                    ))}
                     </div>
-                </div>
-            );
-
-            const renderGameScreen = () => (
-                <div className={`perspective-container ${isDamaged ? 'animate-shake' : ''}`}>
+                    
+                    <input 
+                    type="text" 
+                    placeholder="Enter your pilot name" 
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                    className="w-full text-center text-xl p-4 bg-slate-800 text-white border-2 border-cyan-500/50 rounded-xl focus:outline-none focus:border-cyan-400 transition shadow-inner placeholder-slate-500"
+                    />
+                    <button 
+                    onClick={startGame}
+                    disabled={!userName.trim()}
+                    className={`w-full py-5 text-2xl font-black rounded-xl transition-all shadow-lg flex items-center justify-center gap-3
+                        ${!userName.trim() 
+                            ? 'bg-slate-800 text-slate-500 cursor-not-allowed' 
+                    : 'bg-cyan-600 text-white hover:bg-cyan-500 active:scale-95 shadow-[0_0_30px_rgba(34,211,238,0.5)]'}`}
+                    >
+                    <Icon name="Play" size={28} /> START MISSION
+                    </button>
+                    <p className="text-xs text-slate-500 mt-2">* Please "Allow" microphone access if prompted.</p>
+                    </div>
+                    </div>
+                );
+                
+                const renderGameScreen = () => (
+                    <div className={`perspective-container ${isDamaged ? 'animate-shake' : ''}`}>
                     <Stars />
-
+                    
                     {isDangerMode && <div className="absolute inset-0 bg-red-900/20 animate-pulse pointer-events-none z-0"></div>}
-
+                    
                     {/* HUD */}
                     <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-start z-50 pointer-events-none">
-                        <div className="flex flex-col gap-2">
-                            <div className="flex gap-2">
-                                {[...Array(3)].map((_, i) => (
-                                    <Icon key={i} name="Heart" size={32} fill={i < lives ? "currentColor" : "none"} className={i < lives ? "text-red-500" : "text-slate-700"} />
-                                ))}
-                            </div>
-                            <div className={`text-xl font-black tracking-widest uppercase ${isDangerMode ? 'text-red-500 animate-bounce' : 'text-cyan-400'}`}>
-                                Destroyed: {destroyedCount} / {maxWords}
-                            </div>
-                            {isDangerMode && <div className="text-red-500 font-bold text-sm bg-red-950/80 px-2 py-1 rounded inline-block border border-red-500">WARNING: MAXIMUM SPEED</div>}
-                        </div>
-                        <div className="text-right">
-                            <div className="text-4xl font-black text-white">{score}</div>
-                            <div className="text-lg font-bold text-yellow-400">Combo {combo}</div>
-                        </div>
+                    <div className="flex flex-col gap-2">
+                    <div className="flex gap-2">
+                    {[...Array(3)].map((_, i) => (
+                                <Icon key={i} name="Heart" size={32} fill={i < lives ? "currentColor" : "none"} className={i < lives ? "text-red-500" : "text-slate-700"} />
+                    ))}
                     </div>
-
+                    <div className={`text-xl font-black tracking-widest uppercase ${isDangerMode ? 'text-red-500 animate-bounce' : 'text-cyan-400'}`}>
+                    Destroyed: {destroyedCount} / {maxWords}
+                    </div>
+                    {isDangerMode && <div className="text-red-500 font-bold text-sm bg-red-950/80 px-2 py-1 rounded inline-block border border-red-500">WARNING: MAXIMUM SPEED</div>}
+                    </div>
+                    <div className="text-right">
+                    <div className="text-4xl font-black text-white">{score}</div>
+                    <div className="text-lg font-bold text-yellow-400">Combo {combo}</div>
+                    </div>
+                    </div>
+                    
                     <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-64 border-4 rounded-3xl pointer-events-none ${isDangerMode ? 'border-red-500/50' : 'border-cyan-500/30'}`}></div>
-
+                    
                     {/* 迫り来る敵パネル */}
                     {currentWord && (
-                        <div 
+                            <div 
                             ref={enemyElRef}
                             className="absolute top-1/2 left-1/2 enemy-panel text-center"
                             style={{ transform: `translate(-50%, -50%) translateZ(-4000px)` }}
-                        >
+                            >
                             <div className={`bg-slate-900/90 border-4 rounded-3xl py-12 px-16 shadow-[0_0_100px_rgba(0,0,0,1)] flex flex-col items-center gap-6 backdrop-blur-md min-w-max whitespace-nowrap ${isDangerMode ? 'border-red-700 shadow-[0_0_50px_rgba(220,38,38,0.5)]' : 'border-slate-700'}`}>
-                                <div className="text-8xl md:text-9xl font-bold text-white kyokasho-font tracking-widest drop-shadow-2xl">
-                                    {currentWord.kana}
-                                </div>
-                                <div className="flex items-center gap-2 text-slate-500 font-bold uppercase tracking-widest animate-pulse">
-                                    <Icon name="Mic" size={20} /> SAY IT!
-                                </div>
+                            <div className="text-8xl md:text-9xl font-bold text-white kyokasho-font tracking-widest drop-shadow-2xl">
+                            {currentWord.kana}
                             </div>
-                        </div>
+                            <div className="flex items-center gap-2 text-slate-500 font-bold uppercase tracking-widest animate-pulse">
+                            <Icon name="Mic" size={20} /> SAY IT!
+                            </div>
+                            </div>
+                            </div>
                     )}
-
+                    
                     {/* ビーム発射演出 */}
                     {showBeam && <div className="beam"></div>}
-
+                    
                     {/* 爆発パーティクル */}
                     {particles.map(p => (
-                        <div key={p.id} className="absolute top-1/2 left-1/2 animate-explode pointer-events-none" style={{
-                            '--start-z': `${p.z}px`,
-                            '--dx': `${p.dx}px`,
-                            '--dy': `${p.dy}px`,
-                            width: '30px', height: '30px', backgroundColor: '#22d3ee', borderRadius: '50%',
-                            boxShadow: '0 0 20px #22d3ee'
-                        }}></div>
+                                <div key={p.id} className="absolute top-1/2 left-1/2 animate-explode pointer-events-none" style={{
+                                        '--start-z': `${p.z}px`,
+                                        '--dx': `${p.dx}px`,
+                                        '--dy': `${p.dy}px`,
+                                        width: '30px', height: '30px', backgroundColor: '#22d3ee', borderRadius: '50%',
+                                        boxShadow: '0 0 20px #22d3ee'
+                                }}></div>
                     ))}
-
+                    
                     {/* 音声入力状態表示 (画面下部) */}
                     <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-md px-4 flex flex-col items-center gap-3 z-50 pointer-events-none">
-                        <div className="h-16 flex items-center justify-center text-4xl md:text-5xl font-black text-yellow-300 drop-shadow-[0_0_15px_rgba(253,224,71,0.8)] kyokasho-font transition-all duration-300">
-                            {spokenText ? `「${spokenText}」` : (isListening ? <span className="text-2xl text-cyan-400/80 animate-pulse flex items-center gap-2"><Icon name="Mic" size={24} />Listening...</span> : '')}
-                        </div>
+                    <div className="h-16 flex items-center justify-center text-4xl md:text-5xl font-black text-yellow-300 drop-shadow-[0_0_15px_rgba(253,224,71,0.8)] kyokasho-font transition-all duration-300">
+                    {spokenText ? `「${spokenText}」` : (isListening ? <span className="text-2xl text-cyan-400/80 animate-pulse flex items-center gap-2"><Icon name="Mic" size={24} />Listening...</span> : '')}
                     </div>
-
+                    </div>
+                    
                     {isDamaged && <div className="absolute inset-0 bg-red-600/40 pointer-events-none z-40"></div>}
-                </div>
-            );
-
-            const renderGameOverScreen = () => (
-                <div className="flex flex-col items-center justify-center h-full text-center relative z-10 bg-slate-950/80 animate-in fade-in duration-500 px-4">
+                    </div>
+                );
+                
+                const renderGameOverScreen = () => (
+                    <div className="flex flex-col items-center justify-center h-full text-center relative z-10 bg-slate-950/80 animate-in fade-in duration-500 px-4">
                     <Icon name="AlertTriangle" size={120} className="text-orange-500 mb-8 animate-pulse drop-shadow-[0_0_30px_rgba(249,115,22,0.8)]" />
                     <h2 className="text-6xl md:text-7xl font-black italic mb-4 tracking-tighter text-orange-500">
-                        NICE TRY!
+                    NICE TRY!
                     </h2>
                     <div className="bg-slate-900 p-8 rounded-2xl border border-slate-800 mb-8 w-full max-w-lg shadow-2xl">
-                        <p className="text-slate-400 font-mono tracking-widest uppercase text-sm mb-2">Final Score</p>
-                        <p className="text-6xl font-black text-yellow-400 mb-4">{score}</p>
-                        <p className="text-cyan-400 font-bold">Destroyed: {destroyedCount} / {maxWords}</p>
+                    <p className="text-slate-400 font-mono tracking-widest uppercase text-sm mb-2">Final Score</p>
+                    <p className="text-6xl font-black text-yellow-400 mb-4">{score}</p>
+                    <p className="text-cyan-400 font-bold">Destroyed: {destroyedCount} / {maxWords}</p>
                     </div>
                     <div className="flex flex-col md:flex-row gap-4 w-full max-w-lg">
-                        <button 
-                            onClick={downloadCertificate}
-                            className="flex-1 py-4 bg-cyan-600 text-white font-black text-lg rounded-xl hover:bg-cyan-500 transition shadow-[0_0_20px_rgba(34,211,238,0.4)] flex items-center justify-center gap-2 active:scale-95"
-                        >
-                            <Icon name="Download" size={24} /> RECORD
-                        </button>
-                        <button 
-                            onClick={startGame}
-                            className="flex-1 py-4 bg-orange-600 text-white font-black text-lg rounded-xl hover:bg-orange-500 transition shadow-[0_0_20px_rgba(249,115,22,0.4)] flex items-center justify-center gap-2 active:scale-95"
-                        >
-                            <Icon name="RotateCcw" size={24} /> RETRY
-                        </button>
-                        <button 
-                            onClick={() => setGameState('title')}
-                            className="flex-1 py-4 bg-slate-700 text-white font-black text-lg rounded-xl hover:bg-slate-600 transition shadow-lg flex items-center justify-center gap-2 active:scale-95 border border-slate-600"
-                        >
-                            <Icon name="Home" size={24} /> TITLE
-                        </button>
+                    <button 
+                    onClick={downloadCertificate}
+                    className="flex-1 py-4 bg-cyan-600 text-white font-black text-lg rounded-xl hover:bg-cyan-500 transition shadow-[0_0_20px_rgba(34,211,238,0.4)] flex items-center justify-center gap-2 active:scale-95"
+                    >
+                    <Icon name="Download" size={24} /> RECORD
+                    </button>
+                    <button 
+                    onClick={startGame}
+                    className="flex-1 py-4 bg-orange-600 text-white font-black text-lg rounded-xl hover:bg-orange-500 transition shadow-[0_0_20px_rgba(249,115,22,0.4)] flex items-center justify-center gap-2 active:scale-95"
+                    >
+                    <Icon name="RotateCcw" size={24} /> RETRY
+                    </button>
+                    <button 
+                    onClick={() => setGameState('title')}
+                    className="flex-1 py-4 bg-slate-700 text-white font-black text-lg rounded-xl hover:bg-slate-600 transition shadow-lg flex items-center justify-center gap-2 active:scale-95 border border-slate-600"
+                    >
+                    <Icon name="Home" size={24} /> TITLE
+                    </button>
                     </div>
-                </div>
-            );
-
-            const renderVictoryScreen = () => (
-                <div className="flex flex-col items-center justify-center h-full text-center relative z-10 bg-slate-950/90 animate-in fade-in zoom-in duration-700 px-4">
+                    </div>
+                );
+                
+                const renderVictoryScreen = () => (
+                    <div className="flex flex-col items-center justify-center h-full text-center relative z-10 bg-slate-950/90 animate-in fade-in zoom-in duration-700 px-4">
                     <Icon name="Trophy" size={120} className="text-yellow-400 mb-8 animate-bounce drop-shadow-[0_0_50px_rgba(250,204,21,0.8)]" />
                     <h2 className="text-5xl md:text-7xl font-black italic mb-4 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-600">
-                        MISSION CLEAR!
+                    MISSION CLEAR!
                     </h2>
                     <div className="bg-slate-900 p-8 rounded-2xl border-4 border-yellow-500/50 mb-8 w-full max-w-md shadow-2xl">
-                        <p className="text-slate-400 font-mono tracking-widest uppercase text-sm mb-2">Final Score</p>
-                        <p className="text-7xl font-black text-yellow-400 mb-4">{score}</p>
-                        <p className="text-green-400 font-bold uppercase tracking-widest">All {maxWords} Words Destroyed</p>
+                    <p className="text-slate-400 font-mono tracking-widest uppercase text-sm mb-2">Final Score</p>
+                    <p className="text-7xl font-black text-yellow-400 mb-4">{score}</p>
+                    <p className="text-green-400 font-bold uppercase tracking-widest">All {maxWords} Words Destroyed</p>
                     </div>
                     <div className="flex flex-col md:flex-row gap-4 w-full max-w-md">
-                        <button 
-                            onClick={downloadCertificate}
-                            className="flex-1 py-4 bg-cyan-600 text-white font-black text-lg rounded-xl hover:bg-cyan-500 transition shadow-[0_0_30px_rgba(34,211,238,0.6)] flex items-center justify-center gap-2 active:scale-95"
-                        >
-                            <Icon name="Download" size={24} /> GET LICENSE
-                        </button>
-                        <button 
-                            onClick={() => setGameState('title')}
-                            className="flex-1 py-4 bg-slate-700 text-white font-black text-lg rounded-xl hover:bg-slate-600 transition shadow-lg flex items-center justify-center gap-2 active:scale-95 border border-slate-600"
-                        >
-                            <Icon name="Home" size={24} /> TITLE
-                        </button>
+                    <button 
+                    onClick={downloadCertificate}
+                    className="flex-1 py-4 bg-cyan-600 text-white font-black text-lg rounded-xl hover:bg-cyan-500 transition shadow-[0_0_30px_rgba(34,211,238,0.6)] flex items-center justify-center gap-2 active:scale-95"
+                    >
+                    <Icon name="Download" size={24} /> GET LICENSE
+                    </button>
+                    <button 
+                    onClick={() => setGameState('title')}
+                    className="flex-1 py-4 bg-slate-700 text-white font-black text-lg rounded-xl hover:bg-slate-600 transition shadow-lg flex items-center justify-center gap-2 active:scale-95 border border-slate-600"
+                    >
+                    <Icon name="Home" size={24} /> TITLE
+                    </button>
                     </div>
-                </div>
-            );
-
-            return (
-                <div className="w-full h-screen relative">
+                    </div>
+                );
+                
+                return (
+                    <div className="w-full h-screen relative">
                     {gameState !== 'playing' && (
-                        <div className="perspective-container absolute inset-0 -z-10">
+                            <div className="perspective-container absolute inset-0 -z-10">
                             <Stars />
-                        </div>
+                            </div>
                     )}
                     {gameState === 'title' && renderTitleScreen()}
                     {gameState === 'playing' && renderGameScreen()}
                     {gameState === 'gameover' && renderGameOverScreen()}
                     {gameState === 'victory' && renderVictoryScreen()}
-                </div>
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
+                    </div>
+                );
+            }
+            
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+        </script>
+    </body>
 </html>
