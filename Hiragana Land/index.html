@@ -131,6 +131,14 @@
       }
     };
 
+    const SMALL_VOWEL_MAP = {
+      a: 'ぁ',
+      i: 'ぃ',
+      u: 'ぅ',
+      e: 'ぇ',
+      o: 'ぉ'
+    };
+
     function App() {
       const [currentView, setCurrentView] = useState('home'); // 'home', 'table', 'quiz', 'certificate'
       const [score, setScore] = useState(0);
@@ -143,6 +151,30 @@
       const [feedback, setFeedback] = useState(null); 
 
       useEffect(() => {
+        const blockDefault = (event) => {
+          event.preventDefault();
+        };
+
+        const blockShortcut = (event) => {
+          const key = event.key.toLowerCase();
+          if ((event.ctrlKey || event.metaKey) && (key === 's' || key === 'c')) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        };
+
+        document.addEventListener('contextmenu', blockDefault, true);
+        document.addEventListener('copy', blockDefault, true);
+        window.addEventListener('keydown', blockShortcut, true);
+
+        return () => {
+          document.removeEventListener('contextmenu', blockDefault, true);
+          document.removeEventListener('copy', blockDefault, true);
+          window.removeEventListener('keydown', blockShortcut, true);
+        };
+      }, []);
+
+      useEffect(() => {
         if ('speechSynthesis' in window) {
           window.speechSynthesis.getVoices();
           window.speechSynthesis.onvoiceschanged = () => {
@@ -151,10 +183,24 @@
         }
       }, []);
 
-      const playSound = useCallback((text) => {
+      const getTtsReading = useCallback((kanaItemOrText) => {
+        const kanaItem = typeof kanaItemOrText === 'string'
+          ? ALL_VALID_KANA.find(item => item.kana === kanaItemOrText)
+          : kanaItemOrText;
+
+        if (!kanaItem) return typeof kanaItemOrText === 'string' ? kanaItemOrText : '';
+        if (kanaItem.kana.length > 1) return kanaItem.kana;
+
+        const lastVowel = kanaItem.romaji.match(/[aeiou]$/)?.[0];
+        if (!lastVowel) return kanaItem.kana;
+
+        return `${kanaItem.kana}${SMALL_VOWEL_MAP[lastVowel]}`;
+      }, []);
+
+      const playSound = useCallback((kanaItemOrText) => {
         if ('speechSynthesis' in window) {
           window.speechSynthesis.cancel();
-          const msg = new SpeechSynthesisUtterance(text);
+          const msg = new SpeechSynthesisUtterance(getTtsReading(kanaItemOrText));
           msg.lang = 'ja-JP';
           msg.rate = 0.8; 
 
@@ -167,7 +213,7 @@
 
           window.speechSynthesis.speak(msg);
         }
-      }, []);
+      }, [getTtsReading]);
 
       const generateQuiz = useCallback((scopeStr) => {
         let targetPool = ALL_VALID_KANA;
@@ -190,7 +236,7 @@
         setOptions(allOptions);
         setFeedback(null);
         
-        playSound(correctAnswer.kana);
+        playSound(correctAnswer);
       }, [playSound]);
 
       const startQuiz = () => {
@@ -379,7 +425,7 @@
                   <div key={index} className={currentTab === 'yoon' ? "aspect-[4/3]" : "aspect-square"}>
                     {item.kana ? (
                       <button
-                        onClick={() => playSound(item.kana)}
+                        onClick={() => playSound(item)}
                         className="w-full h-full flex flex-col items-center justify-center bg-white border-2 border-indigo-100 rounded-xl md:rounded-2xl shadow-sm hover:shadow-md hover:border-indigo-400 hover:-translate-y-1 transition group"
                       >
                         <span className={`font-bold text-gray-800 group-active:text-indigo-500 transition-colors kyokasho-font ${item.kana.length > 1 ? 'text-2xl md:text-4xl tracking-tighter' : 'text-3xl md:text-5xl'}`}>
@@ -422,7 +468,7 @@
                 <p className="text-gray-500 font-bold mb-4 text-lg text-center">Which character makes this sound?</p>
                 
                 <button 
-                  onClick={() => playSound(currentQuestion.kana)}
+                  onClick={() => playSound(currentQuestion)}
                   className="w-20 h-20 md:w-24 md:h-24 bg-indigo-100 hover:bg-indigo-200 text-indigo-500 rounded-full flex items-center justify-center shadow-inner mb-6 md:mb-8 transition active:scale-90"
                 >
                   <Volume2 size={40} className="md:w-12 md:h-12" />

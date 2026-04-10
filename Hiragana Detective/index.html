@@ -144,6 +144,30 @@
             const MAX_TIME = 20;
             const CHAR_SIZE = 56; // 14rem (w-14 h-14) = 56px
 
+            useEffect(() => {
+                const blockDefault = (event) => {
+                    event.preventDefault();
+                };
+
+                const blockShortcut = (event) => {
+                    const key = event.key.toLowerCase();
+                    if ((event.ctrlKey || event.metaKey) && (key === 's' || key === 'c')) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                };
+
+                document.addEventListener('contextmenu', blockDefault, true);
+                document.addEventListener('copy', blockDefault, true);
+                window.addEventListener('keydown', blockShortcut, true);
+
+                return () => {
+                    document.removeEventListener('contextmenu', blockDefault, true);
+                    document.removeEventListener('copy', blockDefault, true);
+                    window.removeEventListener('keydown', blockShortcut, true);
+                };
+            }, []);
+
             const speak = useCallback((text, rate = 1.0) => {
                 if (!('speechSynthesis' in window)) return;
                 window.speechSynthesis.cancel();

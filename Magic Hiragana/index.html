@@ -81,6 +81,21 @@
 
     const VALID_KANAS = HIRAGANA_DATA.filter(k => k !== '');
 
+    const TTS_SMALL_VOWEL_GROUPS = [
+      { chars: 'あかさたなはまやらわ', suffix: 'ぁ' },
+      { chars: 'いきしちにひみり', suffix: 'ぃ' },
+      { chars: 'うくすつぬふむゆる', suffix: 'ぅ' },
+      { chars: 'えけせてねへめれ', suffix: 'ぇ' },
+      { chars: 'おこそとのほもよろを', suffix: 'ぉ' }
+    ];
+
+    const getKanaTtsReading = (kana) => {
+      if (!kana || kana.length > 1) return kana;
+
+      const group = TTS_SMALL_VOWEL_GROUPS.find(({ chars }) => chars.includes(kana));
+      return group ? `${kana}${group.suffix}` : kana;
+    };
+
     // 星を描画するヘルパー関数
     function drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius, color) {
       let rot = Math.PI / 2 * 3;
@@ -198,7 +213,7 @@
       const playSound = useCallback((text) => {
         if ('speechSynthesis' in window) {
           window.speechSynthesis.cancel();
-          const msg = new SpeechSynthesisUtterance(text);
+          const msg = new SpeechSynthesisUtterance(getKanaTtsReading(text));
           msg.lang = 'ja-JP';
           msg.rate = 0.8;
           const voices = window.speechSynthesis.getVoices();
