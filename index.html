@@ -288,10 +288,18 @@
 ];
             // --- [DATA_END] ---
             
-            // Basic deterrent: prevent casual right-click saving/copying and link dragging in the exported index.
+            // Basic deterrent: prevent casual right-click saving/copying, link dragging, and common save/source shortcuts.
             document.addEventListener("contextmenu", (event) => event.preventDefault());
             document.addEventListener("dragstart", (event) => {
-                    if (event.target && event.target.closest && event.target.closest("a")) {
+                    if (event.target && event.target.closest && event.target.closest("a, img, video")) {
+                            event.preventDefault();
+                    }
+            });
+            document.addEventListener("keydown", (event) => {
+                    const key = event.key.toLowerCase();
+                    const isSaveOrViewSource = (event.ctrlKey || event.metaKey) && (key === "s" || key === "u");
+                    const isDevToolsShortcut = key === "f12" || ((event.ctrlKey || event.metaKey) && event.shiftKey && ["i", "j", "c"].includes(key)) || (event.metaKey && event.altKey && key === "u");
+                    if (isSaveOrViewSource || isDevToolsShortcut) {
                             event.preventDefault();
                     }
             });
@@ -311,6 +319,7 @@
             function ViewerApp() {
                 const [searchTerm, setSearchTerm] = useState("");
                 const [isAboutOpen, setIsAboutOpen] = useState(false);
+                const [activeLink, setActiveLink] = useState(null);
                 const normalizedSearch = searchTerm.trim().toLowerCase();
                 const aboutContent = INITIAL_ABOUT_CONTENT.trim();
                 const hasLinks = INITIAL_LINKS.length > 0;
@@ -345,6 +354,24 @@
                         return CATEGORY_THEME_OPTIONS.find(theme => theme.id === meta.color) || CATEGORY_THEME_OPTIONS[0];
                 };
                 const getCategoryIcon = (category) => getCategoryMeta(category).icon || "Layers";
+                const activeLinkTitle = activeLink ? (activeLink.title || "Learning App") : "";
+                const activeLinkSrc = activeLink ? "./" + activeLink.fileName : "";
+                
+                const reinforceFrameProtection = (event) => {
+                        try {
+                                const frameDocument = event.currentTarget.contentWindow.document;
+                                frameDocument.addEventListener("contextmenu", (frameEvent) => frameEvent.preventDefault());
+                                frameDocument.addEventListener("dragstart", (frameEvent) => frameEvent.preventDefault());
+                                frameDocument.addEventListener("keydown", (frameEvent) => {
+                                        const key = frameEvent.key.toLowerCase();
+                                        if ((frameEvent.ctrlKey || frameEvent.metaKey) && (key === "s" || key === "u")) {
+                                                frameEvent.preventDefault();
+                                        }
+                                });
+                        } catch (error) {
+                                // Some browsers block iframe access; the parent-level deterrents still apply.
+                        }
+                };
                 
                 return (
                     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -418,6 +445,39 @@
                         </div>
                     ) : null}
                     
+                    {activeLink ? (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-3 py-4 sm:px-6">
+                        <div className="flex h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl shadow-slate-950/25">
+                        <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3 sm:px-5">
+                        <div className="min-w-0">
+                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-500">Learning App</p>
+                        <h2 className="truncate text-base font-semibold text-slate-900 sm:text-lg">{activeLinkTitle}</h2>
+                        </div>
+                        <button
+                        type="button"
+                        onClick={() => setActiveLink(null)}
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                        aria-label="Close learning app"
+                        >
+                        <Icon name="X" size={16} />
+                        Close
+                        </button>
+                        </div>
+                        <div className="flex-1 bg-slate-100">
+                        <iframe
+                        key={activeLink.fileName}
+                        src={activeLinkSrc}
+                        title={activeLinkTitle}
+                        className="h-full w-full border-0 bg-white"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+                        allow="fullscreen; autoplay"
+                        onLoad={reinforceFrameProtection}
+                        />
+                        </div>
+                        </div>
+                        </div>
+                    ) : null}
+                    
                     <main className="flex-1">
                     <div className="mx-auto max-w-6xl px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
                     {hasLinks ? (
@@ -448,12 +508,11 @@
                                     const isMp4 = link.fileName.endsWith(".mp4");
                                     const isFolder = link.isFolder || link.fileName.includes("/");
                                     return (
-                                        <a
+                                        <button
+                                        type="button"
                                         key={link.id}
-                                        href={"./" + link.fileName}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="group flex items-start gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm shadow-slate-950/[0.03] transition duration-200 ease-out hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                                        onClick={() => setActiveLink(link)}
+                                        className="group flex w-full items-start gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm shadow-slate-950/[0.03] transition duration-200 ease-out hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
                                         style={{ backgroundColor: theme.surface, borderColor: theme.border }}
                                         >
                                         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition duration-200 ease-out" style={{ backgroundColor: theme.soft, color: theme.accent }}>
@@ -472,7 +531,7 @@
                                         <div className="shrink-0 self-center text-slate-300 transition duration-200 ease-out group-hover:translate-x-0.5 group-hover:text-indigo-500">
                                         <Icon name="ChevronRight" size={18} />
                                         </div>
-                                        </a>
+                                        </button>
                                     );
                                 })}
                                 </div>
