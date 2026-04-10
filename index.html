@@ -171,14 +171,16 @@
         "category": "Movie",
         "title": "Potential Verbs",
         "fileName": "Potential Verbs/index.html",
-        "isFolder": true
+        "isFolder": true,
+        "description": ""
     },
     {
         "id": "1775801719295ss10lcobw0",
         "category": "Movie",
         "title": "みえます",
         "fileName": "みえます/index.html",
-        "isFolder": true
+        "isFolder": true,
+        "description": ""
     }
 ];
             const INITIAL_CATEGORY_ORDER = [
@@ -285,6 +287,14 @@
     }
 ];
             // --- [DATA_END] ---
+            
+            // Basic deterrent: prevent casual right-click saving/copying and link dragging in the exported index.
+            document.addEventListener("contextmenu", (event) => event.preventDefault());
+            document.addEventListener("dragstart", (event) => {
+                    if (event.target && event.target.closest && event.target.closest("a")) {
+                            event.preventDefault();
+                    }
+            });
             
             const Icon = ({ name, size = 20, className = "" }) => {
                 const iconData = useMemo(() => {
