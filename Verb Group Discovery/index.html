@@ -138,6 +138,30 @@
             // 出題順をランダム化した状態を持つ
             const [questions, setQuestions] = useState(() => shuffleArray(VERB_DATA));
 
+            useEffect(() => {
+                const blockDefault = (event) => {
+                    event.preventDefault();
+                };
+
+                const blockShortcut = (event) => {
+                    const key = event.key.toLowerCase();
+                    if ((event.ctrlKey || event.metaKey) && (key === 's' || key === 'c')) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                };
+
+                document.addEventListener('contextmenu', blockDefault, true);
+                document.addEventListener('copy', blockDefault, true);
+                window.addEventListener('keydown', blockShortcut, true);
+
+                return () => {
+                    document.removeEventListener('contextmenu', blockDefault, true);
+                    document.removeEventListener('copy', blockDefault, true);
+                    window.removeEventListener('keydown', blockShortcut, true);
+                };
+            }, []);
+
             const currentVerb = questions[currentIndex];
 
             const handleGuess = (group) => {
