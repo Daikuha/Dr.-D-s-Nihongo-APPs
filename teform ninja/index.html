@@ -162,6 +162,30 @@
                 
                 // スワイプ判定用
                 const touchStartRef = useRef(null);
+
+                useEffect(() => {
+                        const blockDefault = (event) => {
+                            event.preventDefault();
+                        };
+
+                        const blockShortcut = (event) => {
+                            const key = event.key.toLowerCase();
+                            if ((event.ctrlKey || event.metaKey) && (key === 's' || key === 'c')) {
+                                event.preventDefault();
+                                event.stopPropagation();
+                            }
+                        };
+
+                        document.addEventListener('contextmenu', blockDefault, true);
+                        document.addEventListener('copy', blockDefault, true);
+                        window.addEventListener('keydown', blockShortcut, true);
+
+                        return () => {
+                            document.removeEventListener('contextmenu', blockDefault, true);
+                            document.removeEventListener('copy', blockDefault, true);
+                            window.removeEventListener('keydown', blockShortcut, true);
+                        };
+                }, []);
                 
                 const spawnWord = () => {
                     const randomWord = WORD_LIST[Math.floor(Math.random() * WORD_LIST.length)];

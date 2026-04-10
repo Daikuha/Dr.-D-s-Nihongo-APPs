@@ -134,6 +134,30 @@
       const audioCtxRef = useRef(null);
       const bagRef = useRef([]); // ランダム出題用のバッグ
 
+      useEffect(() => {
+        const blockDefault = (event) => {
+          event.preventDefault();
+        };
+
+        const blockShortcut = (event) => {
+          const key = event.key.toLowerCase();
+          if ((event.ctrlKey || event.metaKey) && (key === 's' || key === 'c')) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        };
+
+        document.addEventListener('contextmenu', blockDefault, true);
+        document.addEventListener('copy', blockDefault, true);
+        window.addEventListener('keydown', blockShortcut, true);
+
+        return () => {
+          document.removeEventListener('contextmenu', blockDefault, true);
+          document.removeEventListener('copy', blockDefault, true);
+          window.removeEventListener('keydown', blockShortcut, true);
+        };
+      }, []);
+
       // 初回TTS初期化
       useEffect(() => {
         if ('speechSynthesis' in window) {
