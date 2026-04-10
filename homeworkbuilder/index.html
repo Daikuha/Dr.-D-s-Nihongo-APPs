@@ -215,6 +215,30 @@
 
       const audioCtxRef = useRef(null);
 
+      useEffect(() => {
+        const blockDefault = (event) => {
+          event.preventDefault();
+        };
+
+        const blockShortcut = (event) => {
+          const key = event.key.toLowerCase();
+          if ((event.ctrlKey || event.metaKey) && (key === 's' || key === 'c')) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        };
+
+        document.addEventListener('contextmenu', blockDefault, true);
+        document.addEventListener('copy', blockDefault, true);
+        window.addEventListener('keydown', blockShortcut, true);
+
+        return () => {
+          document.removeEventListener('contextmenu', blockDefault, true);
+          document.removeEventListener('copy', blockDefault, true);
+          window.removeEventListener('keydown', blockShortcut, true);
+        };
+      }, []);
+
       // 有効な単語のリスト
       const validWords = useMemo(() => {
         return wordList.filter(item => item.word.trim() !== '' && item.meaning.trim() !== '');
