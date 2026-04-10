@@ -168,29 +168,55 @@
                 } catch (e) {}
             };
             
+            let activeQuestionUtterance = null;
+
             const speakQuestion = (text, onEndCallback) => {
+                let uttr = null;
+                let isFinished = false;
+                let fallbackTimer = null;
+                let startCheckTimer = null;
+
+                const finish = () => {
+                    if (isFinished) return;
+                    isFinished = true;
+                    if (fallbackTimer) clearTimeout(fallbackTimer);
+                    if (startCheckTimer) clearTimeout(startCheckTimer);
+                    if (activeQuestionUtterance === uttr) activeQuestionUtterance = null;
+                    if (onEndCallback) onEndCallback();
+                };
+
                 if (!('speechSynthesis' in window)) {
-                    setTimeout(onEndCallback, 2000); // TTS非対応時のフォールバック
+                    setTimeout(finish, 800);
                     return;
                 }
-                window.speechSynthesis.cancel();
-                const uttr = new SpeechSynthesisUtterance(text);
+
+                const synth = window.speechSynthesis;
+                synth.cancel();
+
+                uttr = new SpeechSynthesisUtterance(text);
+                activeQuestionUtterance = uttr;
                 uttr.lang = 'ja-JP';
                 uttr.rate = 0.9;
                 
-                const voices = window.speechSynthesis.getVoices();
+                const voices = synth.getVoices();
                 let selectedVoice = voices.find(voice => voice.lang.includes('ja') && voice.name.includes('Google'));
                 if (!selectedVoice) selectedVoice = voices.find(voice => voice.lang.includes('ja'));
                 if (selectedVoice) uttr.voice = selectedVoice;
                 
-                uttr.onend = () => {
-                    if (onEndCallback) onEndCallback();
-                };
-                uttr.onerror = () => {
-                    if (onEndCallback) onEndCallback();
-                };
-                
-                window.speechSynthesis.speak(uttr);
+                uttr.onend = finish;
+                uttr.onerror = finish;
+
+                // iOS Safari などで TTS が開始されない/完了イベントが返らない場合でも進行を止めない。
+                fallbackTimer = setTimeout(finish, Math.max(1800, Math.min(7000, text.length * 220)));
+                startCheckTimer = setTimeout(() => {
+                    if (!synth.speaking && !synth.pending) finish();
+                }, 500);
+
+                try {
+                    synth.speak(uttr);
+                } catch (e) {
+                    finish();
+                }
             };
             
             // --- Components ---
