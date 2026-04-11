@@ -112,7 +112,7 @@
     },
     {
         "id": "1775382140299rjs4gbu1z0",
-        "category": "Verb Conjugation",
+        "category": "Hidden",
         "title": "slay the te-form",
         "fileName": "slay the te-form/index.html",
         "isFolder": true,
@@ -181,21 +181,41 @@
         "fileName": "みえます/index.html",
         "isFolder": true,
         "description": ""
+    },
+    {
+        "id": "1775826017764v7lov89h80",
+        "category": "Role-Play",
+        "title": "What did you do?",
+        "fileName": "What did you do?/index.html",
+        "isFolder": true,
+        "description": ""
+    },
+    {
+        "id": "1775870640842uxjziwvx30",
+        "category": "Movie",
+        "title": "Nしか",
+        "fileName": "Nしか/index.html",
+        "isFolder": true
     }
 ];
             const INITIAL_CATEGORY_ORDER = [
     "Movie",
+    "Role-Play",
     "Hiragana",
     "Verb Conjugation",
-    "Role-Play",
-    "Vocabulary"
+    "Vocabulary",
+    "Hidden"
 ];
             const INITIAL_PORTAL_TITLE = "だいくはらの にほんご Apps Lab";
-            const INITIAL_ABOUT_CONTENT = "【日本語】\n\nこのサイトに置いてあるアプリは、授業や自主学習のために作成した学習用コンテンツです。\n現在は試験的に運用しているため、内容や構成は予告なく変更、修正、削除されることがあります。\n\nほとんどの教材には、理解を助けるためにAI生成動画、AIで作成した画像・音声・文章などを使用しています。\n\nこのサイト内に登場する人物、団体、場所、設定、会話、ストーリーなどは、特別な記載がない限りすべてフィクションです。\n実在の人物、団体、場所、出来事とは関係ありません。\n\n利用上のお願い・禁止事項\n・このサイトや掲載されているアプリ、動画、画像、音声、文章を無断でコピー、再配布、公開しないでください。\n・このサイトは限られた範囲での学習利用を想定しています。必要以上に多くの人へ共有したり、SNSなどで広く拡散したりしないでください。\n・学習目的以外で使用しないでください。\n・内容を改変して、別の場所にアップロードしないでください。\n・他の人を傷つける目的や、不適切な目的で使用しないでください。\n・先生や管理者の指示に従って利用してください。\n\n【English】\n\nThe apps on this site are learning materials created for classroom use and self-study.\nThis site is currently being operated on a trial basis, so the content and structure may be changed, revised, or removed without prior notice.\n\nMost of the materials use AI-generated videos, images, audio, text, or other AI-created content to support learning.\n\nUnless otherwise stated, all people, groups, places, settings, conversations, stories, and similar elements appearing on this site are fictional.\nThey are not connected to any real people, groups, places, or events.\n\nRequests and Prohibited Uses\n・Do not copy, redistribute, publish, or share the apps, videos, images, audio, text, or other content on this site without permission.\n・This site is intended for learning within a limited group. Please do not share it widely or spread it on social media.\n・Do not use this site for purposes other than learning.\n・Do not modify the content and upload it elsewhere.\n・Do not use this site to harm others or for inappropriate purposes.\n・Please follow the instructions of your teacher or site administrator.";
+            const INITIAL_ABOUT_CONTENT = "【English】\n\nThe apps on this site are learning materials created for classroom use and self-study.\nThis site is currently being operated on a trial basis, so the content and structure may be changed, revised, or removed without prior notice.\n\nMost of the materials use AI-generated videos, images, audio, text, or other AI-created content to support learning.\n\nUnless otherwise stated, all people, groups, places, settings, conversations, stories, and similar elements appearing on this site are fictional.\nThey are not connected to any real people, groups, places, or events.\n\nRequests and Prohibited Uses\n・Do not copy, redistribute, publish, or share the apps, videos, images, audio, text, or other content on this site without permission.\n・This site is intended for learning within a limited group. Please do not share it widely or spread it on social media.\n・Do not use this site for purposes other than learning.\n・Do not modify the content and upload it elsewhere.\n・Do not use this site to harm others or for inappropriate purposes.\n・Please follow the instructions of your teacher or site administrator.";
             const INITIAL_CATEGORY_META = {
     "Movie": {
         "color": "violet",
         "icon": "Video"
+    },
+    "Role-Play": {
+        "color": "rose",
+        "icon": "MessageSquare"
     },
     "Hiragana": {
         "icon": "Palette"
@@ -203,13 +223,12 @@
     "Verb Conjugation": {
         "color": "teal"
     },
-    "Role-Play": {
-        "color": "rose",
-        "icon": "MessageSquare"
-    },
     "Vocabulary": {
         "color": "sky",
         "icon": "Star"
+    },
+    "Hidden": {
+        "developerHidden": true
     }
 };
             const CATEGORY_THEME_OPTIONS = [
@@ -286,6 +305,10 @@
         "text": "#334155"
     }
 ];
+            const INITIAL_ACCESS_PASSWORD = "zunda";
+            const INITIAL_ACCESS_CONTROL_ENABLED = true;
+            const DEVELOPER_UNLOCK_PASSWORD = "daikuhara";
+            const DEVELOPER_UNLOCK_TAP_COUNT = 5;
             // --- [DATA_END] ---
             
             // Basic deterrent: prevent casual right-click saving/copying, link dragging, and common save/source shortcuts.
@@ -320,11 +343,35 @@
                 const [searchTerm, setSearchTerm] = useState("");
                 const [isAboutOpen, setIsAboutOpen] = useState(false);
                 const [activeLink, setActiveLink] = useState(null);
+                const [developerTapCount, setDeveloperTapCount] = useState(0);
+                const [lastDeveloperTapAt, setLastDeveloperTapAt] = useState(0);
+                const [isDeveloperUnlockOpen, setIsDeveloperUnlockOpen] = useState(false);
+                const [developerPasswordInput, setDeveloperPasswordInput] = useState("");
+                const [developerUnlockError, setDeveloperUnlockError] = useState("");
+                const [isDeveloperUnlocked, setIsDeveloperUnlocked] = useState(false);
+                const accessStorageKey = "universal-index-access:" + INITIAL_PORTAL_TITLE;
+                const [isAccessGranted, setIsAccessGranted] = useState(() => {
+                        if (!INITIAL_ACCESS_CONTROL_ENABLED) return true;
+                        const initialPassword = INITIAL_ACCESS_PASSWORD.trim();
+                        if (!initialPassword) return true;
+                        try {
+                                return window.localStorage.getItem(accessStorageKey) === initialPassword;
+                        } catch (error) {
+                                return false;
+                        }
+                });
+                const [passwordInput, setPasswordInput] = useState("");
+                const [passwordError, setPasswordError] = useState("");
+                const [hasReadRules, setHasReadRules] = useState(false);
                 const normalizedSearch = searchTerm.trim().toLowerCase();
                 const aboutContent = INITIAL_ABOUT_CONTENT.trim();
+                const accessPassword = INITIAL_ACCESS_PASSWORD.trim();
+                const needsAccessGate = INITIAL_ACCESS_CONTROL_ENABLED && Boolean(accessPassword);
                 const hasLinks = INITIAL_LINKS.length > 0;
+                const getCategoryMeta = (category) => INITIAL_CATEGORY_META && INITIAL_CATEGORY_META[category] ? INITIAL_CATEGORY_META[category] : {};
+                const isDeveloperHiddenCategory = (category) => Boolean(getCategoryMeta(category).developerHidden);
                 
-                const visibleSections = useMemo(() => {
+                const categorizedSections = useMemo(() => {
                         const groupedLinks = INITIAL_LINKS.reduce((acc, link) => {
                                 if (!acc[link.category]) acc[link.category] = [];
                                 acc[link.category].push(link);
@@ -336,26 +383,93 @@
                         sortedCategories = [...sortedCategories, ...missingCategories];
                         
                         return sortedCategories
-                            .map(category => {
-                                    const items = groupedLinks[category].filter(link =>
-                                        !normalizedSearch ||
-                                        (link.title || "").toLowerCase().includes(normalizedSearch) ||
-                                        (link.description || "").toLowerCase().includes(normalizedSearch) ||
-                                        category.toLowerCase().includes(normalizedSearch)
-                                    );
-                                    return { category, items };
-                            })
+                            .map(category => ({
+                                    category,
+                                    items: groupedLinks[category],
+                                    isDeveloperHidden: isDeveloperHiddenCategory(category)
+                            }))
                             .filter(section => section.items.length > 0);
-                }, [normalizedSearch]);
+                }, []);
+                const hasDeveloperHiddenCategories = categorizedSections.some(section => section.isDeveloperHidden);
+                const hasAccessibleSections = categorizedSections.some(section => !section.isDeveloperHidden || isDeveloperUnlocked);
+                const visibleSections = useMemo(() => categorizedSections
+                    .filter(section => !section.isDeveloperHidden || isDeveloperUnlocked)
+                    .map(section => {
+                            const items = section.items.filter(link =>
+                                !normalizedSearch ||
+                                (link.title || "").toLowerCase().includes(normalizedSearch) ||
+                                (link.description || "").toLowerCase().includes(normalizedSearch) ||
+                                section.category.toLowerCase().includes(normalizedSearch)
+                            );
+                            return { category: section.category, items };
+                    })
+                    .filter(section => section.items.length > 0)
+                , [categorizedSections, normalizedSearch, isDeveloperUnlocked]);
                 
-                const getCategoryMeta = (category) => INITIAL_CATEGORY_META && INITIAL_CATEGORY_META[category] ? INITIAL_CATEGORY_META[category] : {};
                 const getCategoryTheme = (category) => {
                         const meta = getCategoryMeta(category);
                         return CATEGORY_THEME_OPTIONS.find(theme => theme.id === meta.color) || CATEGORY_THEME_OPTIONS[0];
                 };
                 const getCategoryIcon = (category) => getCategoryMeta(category).icon || "Layers";
                 const activeLinkTitle = activeLink ? (activeLink.title || "Learning App") : "";
-                const activeLinkSrc = activeLink ? "./" + activeLink.fileName : "";
+                const getAppSrc = (fileName) => "./" + String(fileName || "").split("/").map(part => encodeURIComponent(part)).join("/");
+                const activeLinkSrc = activeLink ? getAppSrc(activeLink.fileName) : "";
+                const canEnterPortal = !needsAccessGate || (passwordInput.trim() === accessPassword && (!aboutContent || hasReadRules));
+                
+                const grantAccess = () => {
+                        if (needsAccessGate && passwordInput.trim() !== accessPassword) {
+                                setPasswordError("Incorrect password. Please try again.");
+                                return;
+                        }
+                        if (aboutContent && !hasReadRules) {
+                                setPasswordError("Please review and agree to the About / Rules before entering.");
+                                return;
+                        }
+                        try {
+                                window.localStorage.setItem(accessStorageKey, accessPassword);
+                        } catch (error) {
+                                // Access still works for this session if localStorage is unavailable.
+                        }
+                        setPasswordError("");
+                        setIsAccessGranted(true);
+                };
+                
+                const closeDeveloperUnlock = () => {
+                        setDeveloperTapCount(0);
+                        setLastDeveloperTapAt(0);
+                        setDeveloperPasswordInput("");
+                        setDeveloperUnlockError("");
+                        setIsDeveloperUnlockOpen(false);
+                };
+                
+                const handleFooterTitleClick = () => {
+                        if (!hasDeveloperHiddenCategories || isDeveloperUnlocked) return;
+                        const now = Date.now();
+                        const next = now - lastDeveloperTapAt > 1800 ? 1 : developerTapCount + 1;
+                        setLastDeveloperTapAt(now);
+                        if (next >= DEVELOPER_UNLOCK_TAP_COUNT) {
+                                setDeveloperTapCount(0);
+                                setLastDeveloperTapAt(0);
+                                setDeveloperPasswordInput("");
+                                setDeveloperUnlockError("");
+                                setIsDeveloperUnlockOpen(true);
+                                return;
+                        }
+                        setDeveloperTapCount(next);
+                };
+                
+                const submitDeveloperUnlock = () => {
+                        if (developerPasswordInput.trim() !== DEVELOPER_UNLOCK_PASSWORD) {
+                                setDeveloperUnlockError("Incorrect developer password.");
+                                return;
+                        }
+                        setDeveloperUnlockError("");
+                        setDeveloperPasswordInput("");
+                        setDeveloperTapCount(0);
+                        setLastDeveloperTapAt(0);
+                        setIsDeveloperUnlocked(true);
+                        setIsDeveloperUnlockOpen(false);
+                };
                 
                 const reinforceFrameProtection = (event) => {
                         try {
@@ -375,6 +489,70 @@
                 
                 return (
                     <div className="flex min-h-screen flex-col bg-slate-50">
+                    {!isAccessGranted ? (
+                        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 px-4 py-6">
+                        <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl shadow-slate-950/30">
+                        <div className="px-6 py-6 sm:px-8">
+                        <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-500">Limited Access</p>
+                        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">This site has limited access</h2>
+                        <p className="mt-2 text-sm leading-7 text-slate-500">
+                        Enter the password provided by your teacher or site administrator. Before continuing, please review the About / Rules.
+                        </p>
+                        <div className="mt-5">
+                        <label className="block text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                        Password
+                        </label>
+                        <input
+                        type="password"
+                        value={passwordInput}
+                        onChange={(event) => {
+                                setPasswordInput(event.target.value);
+                                setPasswordError("");
+                        }}
+                        onKeyDown={(event) => {
+                                if (event.key === "Enter" && canEnterPortal) grantAccess();
+                        }}
+                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-800 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-500/10"
+                        placeholder="Enter password"
+                        autoFocus
+                        />
+                        </div>
+                        </div>
+                        {aboutContent ? (
+                            <div className="min-h-0 flex-1 overflow-y-auto border-y border-slate-100 bg-slate-50 px-6 py-5 sm:px-8">
+                            <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{aboutContent}</p>
+                            </div>
+                        ) : null}
+                        <div className="px-6 py-5 sm:px-8">
+                        {aboutContent ? (
+                            <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+                            <input
+                            type="checkbox"
+                            checked={hasReadRules}
+                            onChange={(event) => {
+                                    setHasReadRules(event.target.checked);
+                                    setPasswordError("");
+                            }}
+                            className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600"
+                            />
+                            <span>I have reviewed and agree to the About / Rules.</span>
+                            </label>
+                        ) : null}
+                        {passwordError ? (
+                            <p className="mt-3 text-sm font-semibold text-rose-600">{passwordError}</p>
+                        ) : null}
+                        <button
+                        type="button"
+                        onClick={grantAccess}
+                        disabled={!canEnterPortal}
+                        className={"mt-4 inline-flex w-full items-center justify-center rounded-full px-5 py-3 text-sm font-bold transition " + (canEnterPortal ? "bg-indigo-600 text-white hover:bg-indigo-700" : "bg-slate-100 text-slate-400 cursor-not-allowed")}
+                        >
+                        Enter Portal
+                        </button>
+                        </div>
+                        </div>
+                        </div>
+                    ) : null}
                     <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95">
                     <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
                     <div className="flex min-w-0 items-center gap-3">
@@ -392,7 +570,7 @@
                         className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 shadow-sm shadow-slate-950/[0.02] transition duration-200 ease-out hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
                         >
                         <Icon name="Info" size={16} />
-                        このサイトについて / About
+                        About / Rules
                         </button>
                     ) : null}
                     <div className="relative w-full sm:w-72">
@@ -427,7 +605,7 @@
                         <div className="flex items-start justify-between gap-4 px-6 py-5">
                         <div>
                         <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-500">About / Rules</p>
-                        <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">このサイトについて</h2>
+                        <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">About / Rules</h2>
                         </div>
                         <button
                         type="button"
@@ -440,6 +618,65 @@
                         </div>
                         <div className="max-h-[68vh] overflow-y-auto border-t border-slate-100 px-6 py-6">
                         <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{aboutContent}</p>
+                        </div>
+                        </div>
+                        </div>
+                    ) : null}
+                    
+                    {isDeveloperUnlockOpen ? (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 px-4 py-6">
+                        <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl shadow-slate-950/20">
+                        <div className="flex items-start justify-between gap-4 px-6 py-5">
+                        <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-500">Developer Access</p>
+                        <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Unlock hidden categories</h2>
+                        </div>
+                        <button
+                        type="button"
+                        onClick={closeDeveloperUnlock}
+                        className="rounded-full border border-slate-200 bg-white p-2 text-slate-400 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
+                        aria-label="Close developer access dialog"
+                        >
+                        <Icon name="X" size={18} />
+                        </button>
+                        </div>
+                        <div className="border-t border-slate-100 px-6 py-6">
+                        <label className="block text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                        Developer password
+                        </label>
+                        <input
+                        type="password"
+                        value={developerPasswordInput}
+                        onChange={(event) => {
+                                setDeveloperPasswordInput(event.target.value);
+                                setDeveloperUnlockError("");
+                        }}
+                        onKeyDown={(event) => {
+                                if (event.key === "Enter") submitDeveloperUnlock();
+                        }}
+                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-semibold text-slate-800 outline-none transition focus:border-amber-300 focus:bg-white focus:ring-2 focus:ring-amber-500/10"
+                        placeholder="Enter developer password"
+                        autoFocus
+                        />
+                        {developerUnlockError ? (
+                            <p className="mt-3 text-sm font-semibold text-rose-600">{developerUnlockError}</p>
+                        ) : null}
+                        <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <button
+                        type="button"
+                        onClick={closeDeveloperUnlock}
+                        className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                        >
+                        Cancel
+                        </button>
+                        <button
+                        type="button"
+                        onClick={submitDeveloperUnlock}
+                        className="inline-flex items-center justify-center rounded-full bg-amber-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-amber-600"
+                        >
+                        Unlock
+                        </button>
+                        </div>
                         </div>
                         </div>
                         </div>
@@ -469,8 +706,8 @@
                         src={activeLinkSrc}
                         title={activeLinkTitle}
                         className="h-full w-full border-0 bg-white"
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
-                        allow="fullscreen; autoplay"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads allow-top-navigation-by-user-activation"
+                        allow="fullscreen; autoplay; clipboard-read; clipboard-write"
                         onLoad={reinforceFrameProtection}
                         />
                         </div>
@@ -481,78 +718,88 @@
                     <main className="flex-1">
                     <div className="mx-auto max-w-6xl px-5 py-8 sm:px-6 lg:px-8 lg:py-10">
                     {hasLinks ? (
-                        visibleSections.length > 0 ? (
-                            <div className="space-y-10">
-                            {visibleSections.map(section => {
-                                const theme = getCategoryTheme(section.category);
-                                const sectionIcon = getCategoryIcon(section.category);
-                                return (
-                                <section key={section.category} className="space-y-4">
-                                <div className="flex items-center justify-between gap-3">
-                                <div className="flex min-w-0 items-center gap-3">
-                                <span
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border"
-                                style={{ backgroundColor: theme.soft, borderColor: theme.border, color: theme.accent }}
-                                >
-                                <Icon name={sectionIcon} size={17} />
-                                </span>
-                                <h2 className="truncate text-base font-semibold tracking-tight sm:text-lg" style={{ color: theme.text }}>{section.category}</h2>
-                                </div>
-                                <span className="rounded-full border px-2.5 py-1 text-xs font-medium" style={{ backgroundColor: theme.soft, borderColor: theme.border, color: theme.text }}>
-                                {section.items.length}
-                                </span>
-                                </div>
-                                
-                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                                {section.items.map(link => {
-                                    const isMp4 = link.fileName.endsWith(".mp4");
-                                    const isFolder = link.isFolder || link.fileName.includes("/");
+                        hasAccessibleSections ? (
+                            visibleSections.length > 0 ? (
+                                <div className="space-y-10">
+                                {visibleSections.map(section => {
+                                    const theme = getCategoryTheme(section.category);
+                                    const sectionIcon = getCategoryIcon(section.category);
                                     return (
-                                        <button
-                                        type="button"
-                                        key={link.id}
-                                        onClick={() => setActiveLink(link)}
-                                        className="group flex w-full items-start gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm shadow-slate-950/[0.03] transition duration-200 ease-out hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
-                                        style={{ backgroundColor: theme.surface, borderColor: theme.border }}
-                                        >
-                                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition duration-200 ease-out" style={{ backgroundColor: theme.soft, color: theme.accent }}>
-                                        <Icon name={isFolder ? "Folder" : (isMp4 ? "Video" : "FileText")} size={18} />
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                        <p className="truncate text-base font-medium text-slate-800 transition-colors duration-200 group-hover:text-slate-950">
-                                        {link.title || link.fileName}
-                                        </p>
-                                        {link.description ? (
-                                            <p className="mt-1 text-sm leading-relaxed text-slate-500">
-                                            {link.description}
+                                    <section key={section.category} className="space-y-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                    <span
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border"
+                                    style={{ backgroundColor: theme.soft, borderColor: theme.border, color: theme.accent }}
+                                    >
+                                    <Icon name={sectionIcon} size={17} />
+                                    </span>
+                                    <h2 className="truncate text-base font-semibold tracking-tight sm:text-lg" style={{ color: theme.text }}>{section.category}</h2>
+                                    </div>
+                                    <span className="rounded-full border px-2.5 py-1 text-xs font-medium" style={{ backgroundColor: theme.soft, borderColor: theme.border, color: theme.text }}>
+                                    {section.items.length}
+                                    </span>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                    {section.items.map(link => {
+                                        const isMp4 = link.fileName.endsWith(".mp4");
+                                        const isFolder = link.isFolder || link.fileName.includes("/");
+                                        return (
+                                            <button
+                                            type="button"
+                                            key={link.id}
+                                            onClick={() => setActiveLink(link)}
+                                            className="group flex w-full items-start gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-left shadow-sm shadow-slate-950/[0.03] transition duration-200 ease-out hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
+                                            style={{ backgroundColor: theme.surface, borderColor: theme.border }}
+                                            >
+                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition duration-200 ease-out" style={{ backgroundColor: theme.soft, color: theme.accent }}>
+                                            <Icon name={isFolder ? "Folder" : (isMp4 ? "Video" : "FileText")} size={18} />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                            <p className="truncate text-base font-medium text-slate-800 transition-colors duration-200 group-hover:text-slate-950">
+                                            {link.title || link.fileName}
                                             </p>
-                                        ) : null}
-                                        </div>
-                                        <div className="shrink-0 self-center text-slate-300 transition duration-200 ease-out group-hover:translate-x-0.5 group-hover:text-indigo-500">
-                                        <Icon name="ChevronRight" size={18} />
-                                        </div>
-                                        </button>
+                                            {link.description ? (
+                                                <p className="mt-1 text-sm leading-relaxed text-slate-500">
+                                                {link.description}
+                                                </p>
+                                            ) : null}
+                                            </div>
+                                            <div className="shrink-0 self-center text-slate-300 transition duration-200 ease-out group-hover:translate-x-0.5 group-hover:text-indigo-500">
+                                            <Icon name="ChevronRight" size={18} />
+                                            </div>
+                                            </button>
+                                        );
+                                    })}
+                                    </div>
+                                    </section>
                                     );
                                 })}
                                 </div>
-                                </section>
-                                );
-                            })}
-                            </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-20 text-center">
+                                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                                <Icon name="SearchX" size={24} />
+                                </div>
+                                <h2 className="mt-5 text-lg font-medium text-slate-700">No results</h2>
+                                <p className="mt-1 text-sm text-slate-400">Try another word.</p>
+                                <button
+                                type="button"
+                                onClick={() => setSearchTerm("")}
+                                className="mt-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition duration-200 ease-out hover:border-slate-300 hover:bg-slate-50"
+                                >
+                                Clear
+                                </button>
+                                </div>
+                            )
                         ) : (
                             <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-20 text-center">
                             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                            <Icon name="SearchX" size={24} />
+                            <Icon name="Lock" size={24} />
                             </div>
-                            <h2 className="mt-5 text-lg font-medium text-slate-700">No results</h2>
-                            <p className="mt-1 text-sm text-slate-400">Try another word.</p>
-                            <button
-                            type="button"
-                            onClick={() => setSearchTerm("")}
-                            className="mt-5 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition duration-200 ease-out hover:border-slate-300 hover:bg-slate-50"
-                            >
-                            Clear
-                            </button>
+                            <h2 className="mt-5 text-lg font-medium text-slate-700">No apps available</h2>
+                            <p className="mt-1 text-sm text-slate-400">There are no public categories available in this portal.</p>
                             </div>
                         )
                     ) : (
@@ -569,7 +816,17 @@
                     
                     <footer className="border-t border-slate-200/80 bg-white/70">
                     <div className="mx-auto max-w-6xl px-5 py-5 text-center sm:px-6 lg:px-8">
-                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">{INITIAL_PORTAL_TITLE}</p>
+                    <button
+                    type="button"
+                    onClick={handleFooterTitleClick}
+                    disabled={!hasDeveloperHiddenCategories || isDeveloperUnlocked}
+                    className={"text-xs font-medium uppercase tracking-[0.18em] transition " + (hasDeveloperHiddenCategories && !isDeveloperUnlocked ? "cursor-pointer text-slate-400 hover:text-slate-500" : "cursor-default text-slate-400")}
+                    >
+                    {INITIAL_PORTAL_TITLE}
+                    </button>
+                    {isDeveloperUnlocked ? (
+                        <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-500">Developer categories unlocked</p>
+                    ) : null}
                     </div>
                     </footer>
                     </div>
