@@ -1,0 +1,2062 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vocabulary Builder</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- SheetJS for Excel/CSV import -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+    // --- Lucide Icon Component Helper ---
+    const Icon = ({ name, size = 24, className = "", fill = "none" }) => {
+      const iconData = useMemo(() => {
+        if (!window.lucide || !lucide.icons) return null;
+        const key = name.charAt(0).toLowerCase() + name.slice(1);
+        return lucide.icons[key] || lucide.icons[name] || lucide.icons[name.toLowerCase()];
+      }, [name]);
+
+      if (!iconData) return <span className={className} style={{ width: size, height: size, display: 'inline-block' }} />;
+
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill={fill}
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={className}
+          dangerouslySetInnerHTML={{
+            __html: iconData.map(([tag, attrs]) => {
+              const attrStr = Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(" ");
+              return `<${tag} ${attrStr} />`;
+            }).join("")
+          }}
+        />
+      );
+    };
+
+    // --- 柔軟な判定のためのローマ字変換・正規化ロジック ---
+    const KANA_TO_ROMAJI = {
+      'あ':'a', 'い':'i', 'う':'u', 'え':'e', 'お':'o',
+      'か':'ka', 'き':'ki', 'く':'ku', 'け':'ke', 'こ':'ko',
+      'さ':'sa', 'し':'shi', 'す':'su', 'せ':'se', 'そ':'so',
+      'た':'ta', 'ち':'chi', 'つ':'tsu', 'て':'te', 'と':'to',
+      'な':'na', 'に':'ni', 'ぬ':'nu', 'ね':'ne', 'の':'no',
+      'は':'ha', 'ひ':'hi', 'ふ':'fu', 'へ':'he', 'ほ':'ho',
+      'ま':'ma', 'み':'mi', 'む':'mu', 'め':'me', 'も':'mo',
+      'や':'ya', 'ゆ':'yu', 'よ':'yo',
+      'ら':'ra', 'り':'ri', 'る':'ru', 'れ':'re', 'ろ':'ro',
+      'わ':'wa', 'を':'o', 'ん':'n',
+      'が':'ga', 'ぎ':'gi', 'ぐ':'gu', 'げ':'ge', 'ご':'go',
+      'ざ':'za', 'じ':'ji', 'ず':'zu', 'ぜ':'ze', 'ぞ':'zo',
+      'だ':'da', 'ぢ':'ji', 'づ':'zu', 'で':'de', 'ど':'do',
+      'ば':'ba', 'び':'bi', 'ぶ':'bu', 'べ':'be', 'ぼ':'bo',
+      'ぱ':'pa', 'ぴ':'pi', 'ぷ':'pu', 'ぺ':'pe', 'ぽ':'po',
+      'きゃ':'kya', 'きゅ':'kyu', 'きょ':'kyo',
+      'しゃ':'sha', 'しゅ':'shu', 'しょ':'sho',
+      'ちゃ':'cha', 'ちゅ':'chu', 'ちょ':'cho',
+      'にゃ':'nya', 'にゅ':'nyu', 'にょ':'nyo',
+      'ひゃ':'hya', 'ひゅ':'hyu', 'ひょ':'hyo',
+      'みゃ':'mya', 'みゅ':'myu', 'みょ':'myo',
+      'りゃ':'rya', 'りゅ':'ryu', 'りょ':'ryo',
+      'ぎゃ':'gya', 'ぎゅ':'gyu', 'ぎょ':'gyo',
+      'じゃ':'ja', 'じゅ':'ju', 'じょ':'jo',
+      'びゃ':'bya', 'びゅ':'byu', 'びょ':'byo',
+      'ぴゃ':'pya', 'ぴゅ':'pyu', 'ぴょ':'pyo'
+    };
+
+    const katakanaToHiragana = (text) => text.replace(/[\u30a1-\u30f6]/g, (char) => (
+      String.fromCharCode(char.charCodeAt(0) - 0x60)
+    ));
+
+    // どんな入力（ひらがな・カタカナ・全角英数）でも一旦半角ローマ字に変換する
+    const toRomaji = (text) => {
+      let str = text.replace(/[Ａ-Ｚａ-ｚ]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+      str = katakanaToHiragana(str).toLowerCase().replace(/\s+/g, '');
+
+      let romaji = '';
+      let i = 0;
+      while (i < str.length) {
+        if (i < str.length - 1) {
+          const twoChar = str.substring(i, i + 2);
+          if (KANA_TO_ROMAJI[twoChar]) {
+            romaji += KANA_TO_ROMAJI[twoChar];
+            i += 2;
+            continue;
+          }
+        }
+        // 促音（っ）の処理
+        if (str[i] === 'っ' && i < str.length - 1) {
+          const nextChar = str.substring(i + 1, i + 2);
+          const nextTwoChar = str.substring(i + 1, i + 3);
+          let nextRomaji = KANA_TO_ROMAJI[nextTwoChar] || KANA_TO_ROMAJI[nextChar] || nextChar;
+          if (nextRomaji && !['a', 'i', 'u', 'e', 'o'].includes(nextRomaji[0])) {
+            romaji += nextRomaji[0];
+            i++;
+            continue;
+          }
+        }
+        // 長音（ー）の処理
+        if (str[i] === 'ー') {
+          romaji += '-';
+          i++;
+          continue;
+        }
+        const oneChar = str[i];
+        romaji += KANA_TO_ROMAJI[oneChar] || oneChar;
+        i++;
+      }
+      return romaji;
+    };
+
+    // 綴りの揺らぎ（ヘボン式・訓令式・長音など）を吸収する正規化
+    const normalizeRomaji = (romaji) => {
+      return romaji
+        .replace(/shi/g, 'si').replace(/chi/g, 'ti').replace(/tsu/g, 'tu').replace(/fu/g, 'hu').replace(/ji/g, 'zi')
+        .replace(/sha/g, 'sya').replace(/shu/g, 'syu').replace(/sho/g, 'syo')
+        .replace(/cha/g, 'tya').replace(/chu/g, 'tyu').replace(/cho/g, 'tyo')
+        .replace(/ja/g, 'zya').replace(/ju/g, 'zyu').replace(/jo/g, 'zyo')
+        .replace(/ou/g, 'o').replace(/oo/g, 'o').replace(/oh/g, 'o') // 長い「お」の揺らぎ吸収
+        .replace(/uu/g, 'u') // 長い「う」の揺らぎ吸収
+        .replace(/-/g, '') // ハイフン無視
+        .replace(/nn/g, 'n'); // 「ん」のタイピング揺らぎ吸収
+    };
+
+    const normalizeString = (str) => str.toLowerCase().replace(/\s+/g, '');
+
+    // --- 音声合成 (TTS) ---
+    const speak = (text, onEndCallback) => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.lang = 'ja-JP';
+        msg.rate = 0.9;
+        
+        if (onEndCallback) {
+          msg.onend = onEndCallback;
+          msg.onerror = onEndCallback;
+        }
+
+        const voices = window.speechSynthesis.getVoices();
+        const googleJaVoice = voices.find(v => v.lang.includes('ja') && v.name.toLowerCase().includes('google'));
+        if (googleJaVoice) msg.voice = googleJaVoice;
+        window.speechSynthesis.speak(msg);
+      } else {
+        if (onEndCallback) setTimeout(onEndCallback, 1500);
+      }
+    };
+
+    // --- 効果音 ---
+    const playSE = (audioCtx, type) => {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      if (type === 'correct') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(1200, audioCtx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+      } else if (type === 'incorrect') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+      }
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+    };
+
+    const shuffleArray = (array) => {
+      const newArr = [...array];
+      for (let i = newArr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+      }
+      return newArr;
+    };
+
+    const createWordItem = (word = '', meaning = '') => ({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      word,
+      meaning
+    });
+
+    const SAMPLE_VOCAB_PAIRS = [
+      { word: 'りんご', meaning: 'apple' },
+      { word: 'トマト', meaning: 'tomato' },
+      { word: 'たべます', meaning: 'eat' },
+      { word: 'あかい', meaning: 'red' }
+    ];
+
+    const ensureMinimumWordRows = (items, minimum = 4) => {
+      const nextItems = items.length > 0 ? [...items] : [];
+      while (nextItems.length < minimum) {
+        nextItems.push(createWordItem());
+      }
+      return nextItems;
+    };
+
+    const normalizeHeader = (value) => (
+      String(value || '')
+        .toLowerCase()
+        .replace(/\s+/g, '')
+        .replace(/[()/:.-]/g, '')
+    );
+
+    const WORD_HEADER_KEYS = ['word', 'words', 'term', 'kana', 'hiragana', 'katakana', 'romaji', 'reading', 'vocab', 'vocabulary', 'ことば', '単語', '言葉', '読み', 'カナ', 'カタカナ'];
+    const MEANING_HEADER_KEYS = ['meaning', 'meanings', 'translation', 'translations', 'english', 'definition', 'gloss', '意味', '英語', '訳'];
+    const WORD_RECOMMENDED_PATTERN = /^[a-zA-Z\u3041-\u3096\u30A1-\u30FFー\s'’-]+$/;
+
+    const isRecommendedWordFormat = (value) => {
+      const trimmed = value.trim();
+      return trimmed === '' || WORD_RECOMMENDED_PATTERN.test(trimmed);
+    };
+
+    const extractWordMeaningPairs = (rows) => {
+      const filledRows = rows
+        .filter(row => Array.isArray(row))
+        .map(row => row.map(cell => String(cell ?? '').trim()))
+        .filter(row => row.some(cell => cell !== ''));
+
+      if (filledRows.length === 0) return [];
+
+      const headerRow = filledRows[0].map(normalizeHeader);
+      const wordIndex = headerRow.findIndex(cell => WORD_HEADER_KEYS.includes(cell));
+      const meaningIndex = headerRow.findIndex(cell => MEANING_HEADER_KEYS.includes(cell));
+
+      const dataRows = wordIndex !== -1 && meaningIndex !== -1
+        ? filledRows.slice(1).map(row => ({ word: row[wordIndex] || '', meaning: row[meaningIndex] || '' }))
+        : filledRows.map(row => ({ word: row[0] || '', meaning: row[1] || '' }));
+
+      return dataRows
+        .map(item => ({ word: item.word.trim(), meaning: item.meaning.trim() }))
+        .filter(item => item.word !== '' && item.meaning !== '');
+    };
+
+    const escapeHtml = (text) => String(text ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+    const toFileSafeName = (text, fallback) => {
+      const normalized = String(text || '')
+        .trim()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9_-]/g, '');
+      return normalized || fallback;
+    };
+
+    const downloadHtmlFile = (filename, htmlContent) => {
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+
+    const buildFlashcardsHtml = (studentName, words) => {
+      const serializedWords = JSON.stringify(words.map(({ word, meaning }) => ({ word, meaning }))).replace(/</g, '\\u003c');
+      const safeStudentName = escapeHtml(studentName || 'Student');
+
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vocabulary Builder Flashcards</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(180deg, #ecfeff 0%, #f8fafc 100%);
+      color: #0f172a;
+      min-height: 100vh;
+    }
+    .page {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    .hero, .panel, .card {
+      background: white;
+      border-radius: 24px;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .hero {
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+    }
+    .hero p {
+      margin: 0;
+      color: #475569;
+      line-height: 1.6;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(260px, 0.7fr);
+      gap: 24px;
+    }
+    .card {
+      padding: 24px;
+      min-height: 440px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+    .card-label {
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      color: #0f766e;
+      margin-bottom: 16px;
+      font-weight: 700;
+    }
+    .card-text {
+      font-size: clamp(2.5rem, 8vw, 5rem);
+      font-weight: 800;
+      word-break: break-word;
+    }
+    .card-hint {
+      margin-top: 18px;
+      color: #64748b;
+      font-weight: 700;
+    }
+    .panel {
+      padding: 24px;
+    }
+    .panel h2 {
+      margin-top: 0;
+      margin-bottom: 16px;
+      font-size: 1.4rem;
+    }
+    .meta {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .meta-box {
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }
+    .meta-box span {
+      display: block;
+      color: #64748b;
+      font-size: 0.9rem;
+      margin-bottom: 6px;
+    }
+    .meta-box strong {
+      font-size: 1.1rem;
+    }
+    .controls {
+      display: grid;
+      gap: 12px;
+    }
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 14px 18px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .primary { background: #14b8a6; color: white; }
+    .dark { background: #0f172a; color: white; }
+    .light { background: #e2e8f0; color: #0f172a; }
+    .counter {
+      margin-top: 18px;
+      text-align: center;
+      color: #475569;
+      font-weight: 700;
+    }
+    .grid-list {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+    }
+    .mini-card {
+      background: white;
+      border-radius: 18px;
+      border: 1px solid #dbeafe;
+      padding: 16px;
+      box-shadow: 0 12px 30px rgba(14, 116, 144, 0.08);
+    }
+    .mini-card .word {
+      font-size: 1.4rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .mini-card .meaning {
+      color: #475569;
+      line-height: 1.5;
+    }
+    @media (max-width: 760px) {
+      .layout { grid-template-columns: 1fr; }
+      .card { min-height: 340px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <h1>Vocabulary Builder Flashcards</h1>
+      <p>Student: <strong>${safeStudentName}</strong><br>Click the big card to flip between the word and the meaning. Use the controls to move through the deck or listen to the word.</p>
+    </section>
+    <section class="layout">
+      <div class="card" id="flashcard" role="button" aria-label="Flip flashcard">
+        <div class="card-label" id="cardLabel">Word</div>
+        <div class="card-text" id="cardText"></div>
+        <div class="card-hint">Click or tap to flip</div>
+      </div>
+      <aside class="panel">
+        <h2>Deck Controls</h2>
+        <div class="meta">
+          <div class="meta-box"><span>Student</span><strong>${safeStudentName}</strong></div>
+          <div class="meta-box"><span>Total Cards</span><strong id="cardTotal"></strong></div>
+          <div class="meta-box"><span>Current Card</span><strong id="cardPosition"></strong></div>
+        </div>
+        <div class="controls">
+          <button class="primary" id="listenBtn">Listen</button>
+          <button class="dark" id="flipBtn">Flip Card</button>
+          <button class="light" id="prevBtn">Previous</button>
+          <button class="light" id="nextBtn">Next</button>
+          <button class="light" id="shuffleBtn">Shuffle Deck</button>
+        </div>
+        <div class="counter" id="counterText"></div>
+      </aside>
+    </section>
+    <section class="grid-list" id="allCards"></section>
+  </main>
+
+  <script>
+    const cards = ${serializedWords};
+    let currentIndex = 0;
+    let showingMeaning = false;
+
+    const cardLabel = document.getElementById('cardLabel');
+    const cardText = document.getElementById('cardText');
+    const cardPosition = document.getElementById('cardPosition');
+    const cardTotal = document.getElementById('cardTotal');
+    const counterText = document.getElementById('counterText');
+    const allCards = document.getElementById('allCards');
+
+    const speak = (text) => {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'ja-JP';
+      utterance.rate = 0.9;
+      window.speechSynthesis.speak(utterance);
+    };
+
+    const escapeHtml = (text) => String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+    const renderMiniCards = () => {
+      allCards.innerHTML = cards.map((card, index) => \`
+        <article class="mini-card">
+          <div class="word">\${index + 1}. \${escapeHtml(card.word)}</div>
+          <div class="meaning">\${escapeHtml(card.meaning)}</div>
+        </article>
+      \`).join('');
+    };
+
+    const renderCard = () => {
+      const currentCard = cards[currentIndex];
+      cardLabel.textContent = showingMeaning ? 'Meaning' : 'Word';
+      cardText.textContent = showingMeaning ? currentCard.meaning : currentCard.word;
+      cardPosition.textContent = \`\${currentIndex + 1} / \${cards.length}\`;
+      cardTotal.textContent = cards.length;
+      counterText.textContent = showingMeaning
+        ? 'You are viewing the meaning side.'
+        : 'You are viewing the word side.';
+    };
+
+    const flipCard = () => {
+      showingMeaning = !showingMeaning;
+      renderCard();
+    };
+
+    const changeCard = (direction) => {
+      currentIndex = (currentIndex + direction + cards.length) % cards.length;
+      showingMeaning = false;
+      renderCard();
+    };
+
+    const shuffleDeck = () => {
+      for (let i = cards.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cards[i], cards[j]] = [cards[j], cards[i]];
+      }
+      currentIndex = 0;
+      showingMeaning = false;
+      renderCard();
+      renderMiniCards();
+    };
+
+    document.getElementById('flashcard').addEventListener('click', flipCard);
+    document.getElementById('flipBtn').addEventListener('click', flipCard);
+    document.getElementById('prevBtn').addEventListener('click', () => changeCard(-1));
+    document.getElementById('nextBtn').addEventListener('click', () => changeCard(1));
+    document.getElementById('shuffleBtn').addEventListener('click', shuffleDeck);
+    document.getElementById('listenBtn').addEventListener('click', () => speak(cards[currentIndex].word));
+
+    renderCard();
+    renderMiniCards();
+  <\/script>
+</body>
+</html>`;
+    };
+
+    const buildPracticeHtml = (studentName, words) => {
+      const safeStudentName = escapeHtml(studentName || 'Student');
+      const writingSection = words.map((item, index) => `
+        <div class="question">
+          <div class="prompt">${index + 1}. ${escapeHtml(item.meaning)}</div>
+          <div class="line"></div>
+        </div>
+      `).join('');
+
+      const meaningSection = words.map((item, index) => `
+        <div class="question">
+          <div class="prompt">${index + 1}. ${escapeHtml(item.word)}</div>
+          <div class="line"></div>
+        </div>
+      `).join('');
+
+      const answerRows = words.map((item, index) => `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${escapeHtml(item.word)}</td>
+          <td>${escapeHtml(item.meaning)}</td>
+        </tr>
+      `).join('');
+
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vocabulary Builder Practice Pack</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      padding: 24px;
+    }
+    .page {
+      max-width: 960px;
+      margin: 0 auto;
+      display: grid;
+      gap: 24px;
+    }
+    .sheet {
+      background: white;
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    h1, h2 {
+      margin-top: 0;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .chip {
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: #ecfeff;
+      color: #0f766e;
+      font-weight: 700;
+      border: 1px solid #a5f3fc;
+    }
+    .question-grid {
+      display: grid;
+      gap: 16px;
+    }
+    .question {
+      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      padding: 18px;
+      background: #fff;
+    }
+    .prompt {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+    .line {
+      border-bottom: 2px solid #cbd5e1;
+      height: 32px;
+    }
+    details {
+      border: 1px solid #cbd5e1;
+      border-radius: 18px;
+      padding: 18px;
+      background: #f8fafc;
+    }
+    summary {
+      cursor: pointer;
+      font-weight: 800;
+      color: #0f766e;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 18px;
+    }
+    th, td {
+      border-bottom: 1px solid #cbd5e1;
+      padding: 12px;
+      text-align: left;
+    }
+    th {
+      background: #ecfeff;
+    }
+    @media print {
+      body { background: white; padding: 0; }
+      .sheet { box-shadow: none; border: 1px solid #cbd5e1; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="sheet">
+      <h1>Vocabulary Builder Practice Pack</h1>
+      <p>Student: <strong>${safeStudentName}</strong></p>
+      <div class="meta">
+        <div class="chip">${words.length} word / meaning pairs</div>
+        <div class="chip">Words can be written in hiragana, katakana, or roman alphabet</div>
+      </div>
+    </section>
+
+    <section class="sheet">
+      <h2>Section A: Write the Word</h2>
+      <p>Look at the meaning and write the word in hiragana, katakana, or roman alphabet.</p>
+      <div class="question-grid">
+        ${writingSection}
+      </div>
+    </section>
+
+    <section class="sheet">
+      <h2>Section B: Write the Meaning</h2>
+      <p>Look at the word and write the meaning.</p>
+      <div class="question-grid">
+        ${meaningSection}
+      </div>
+    </section>
+
+    <section class="sheet">
+      <details>
+        <summary>Show Answer Key</summary>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Word</th>
+              <th>Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${answerRows}
+          </tbody>
+        </table>
+      </details>
+    </section>
+  </main>
+</body>
+</html>`;
+    };
+
+    const buildStudyPackHtml = (studentName, words) => {
+      const serializedWords = JSON.stringify(words.map(({ word, meaning }) => ({ word, meaning }))).replace(/</g, '\\u003c');
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vocabulary Builder Flashcards</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(180deg, #ecfeff 0%, #f8fafc 38%, #ffffff 100%);
+      color: #0f172a;
+      min-height: 100vh;
+    }
+    .page {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 36px 20px 48px;
+    }
+    .flashcard-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(260px, 0.7fr);
+      gap: 24px;
+      align-items: stretch;
+    }
+    .card, .panel {
+      background: white;
+      border-radius: 24px;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .card {
+      padding: 24px;
+      min-height: 420px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      cursor: pointer;
+    }
+    .card-label {
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      color: #0f766e;
+      margin-bottom: 16px;
+      font-weight: 700;
+    }
+    .card-text {
+      font-size: clamp(2.5rem, 8vw, 5rem);
+      font-weight: 800;
+      word-break: break-word;
+    }
+    .card-hint {
+      margin-top: 18px;
+      color: #64748b;
+      font-weight: 700;
+    }
+    .panel {
+      padding: 24px;
+    }
+    .meta-box {
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 12px;
+    }
+    .meta-box span {
+      display: block;
+      color: #64748b;
+      font-size: 0.9rem;
+      margin-bottom: 6px;
+    }
+    .meta-box strong {
+      font-size: 1.1rem;
+    }
+    .controls {
+      display: grid;
+      gap: 12px;
+    }
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 14px 18px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .primary { background: #14b8a6; color: white; }
+    .dark { background: #0f172a; color: white; }
+    .light { background: #e2e8f0; color: #0f172a; }
+    .counter {
+      margin-top: 18px;
+      text-align: center;
+      color: #475569;
+      font-weight: 700;
+    }
+    @media (max-width: 760px) {
+      .flashcard-layout { grid-template-columns: 1fr; }
+      .card { min-height: 320px; }
+    }
+    @media print {
+      body { background: white; }
+      .card, .panel {
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="flashcard-layout">
+      <div class="card" id="flashcard" role="button" aria-label="Flip flashcard">
+        <div class="card-label" id="cardLabel">Word</div>
+        <div class="card-text" id="cardText"></div>
+        <div class="card-hint">Click or tap to flip</div>
+      </div>
+      <aside class="panel">
+        <div class="meta-box"><span>Total Cards</span><strong id="cardTotal"></strong></div>
+        <div class="meta-box"><span>Current Card</span><strong id="cardPosition"></strong></div>
+        <div class="controls">
+          <button class="primary" id="listenBtn">Listen</button>
+          <button class="dark" id="flipBtn">Flip Card</button>
+          <button class="light" id="prevBtn">Previous</button>
+          <button class="light" id="nextBtn">Next</button>
+          <button class="light" id="shuffleBtn">Shuffle Deck</button>
+        </div>
+        <div class="counter" id="counterText"></div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const cards = ${serializedWords};
+    let currentIndex = 0;
+    let showingMeaning = false;
+
+    const cardLabel = document.getElementById('cardLabel');
+    const cardText = document.getElementById('cardText');
+    const cardPosition = document.getElementById('cardPosition');
+    const cardTotal = document.getElementById('cardTotal');
+    const counterText = document.getElementById('counterText');
+
+    const speak = (text) => {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'ja-JP';
+      utterance.rate = 0.9;
+      window.speechSynthesis.speak(utterance);
+    };
+
+    const renderCard = () => {
+      const currentCard = cards[currentIndex];
+      cardLabel.textContent = showingMeaning ? 'Meaning' : 'Word';
+      cardText.textContent = showingMeaning ? currentCard.meaning : currentCard.word;
+      cardPosition.textContent = \`\${currentIndex + 1} / \${cards.length}\`;
+      cardTotal.textContent = cards.length;
+      counterText.textContent = showingMeaning
+        ? 'You are viewing the meaning side.'
+        : 'You are viewing the word side.';
+    };
+
+    const flipCard = () => {
+      showingMeaning = !showingMeaning;
+      renderCard();
+    };
+
+    const changeCard = (direction) => {
+      currentIndex = (currentIndex + direction + cards.length) % cards.length;
+      showingMeaning = false;
+      renderCard();
+    };
+
+    const shuffleDeck = () => {
+      for (let i = cards.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cards[i], cards[j]] = [cards[j], cards[i]];
+      }
+      currentIndex = 0;
+      showingMeaning = false;
+      renderCard();
+    };
+
+    document.getElementById('flashcard').addEventListener('click', flipCard);
+    document.getElementById('flipBtn').addEventListener('click', flipCard);
+    document.getElementById('prevBtn').addEventListener('click', () => changeCard(-1));
+    document.getElementById('nextBtn').addEventListener('click', () => changeCard(1));
+    document.getElementById('shuffleBtn').addEventListener('click', shuffleDeck);
+    document.getElementById('listenBtn').addEventListener('click', () => speak(cards[currentIndex].word));
+
+    renderCard();
+  <\/script>
+</body>
+</html>`;
+    };
+
+    function App() {
+      // 状態: 'intro', 'setup', 'flashcards', 'transition', 'step1', 'step2', 'step3', 'result'
+      const [gameState, setGameState] = useState('intro'); 
+      const [currentStep, setCurrentStep] = useState(1);
+      const [userName, setUserName] = useState('');
+      
+      const [wordList, setWordList] = useState(ensureMinimumWordRows([]));
+      const [importStatus, setImportStatus] = useState(null);
+      const [flashcardDeck, setFlashcardDeck] = useState([]);
+      const [flashcardIndex, setFlashcardIndex] = useState(0);
+      const [showFlashcardMeaning, setShowFlashcardMeaning] = useState(false);
+      const [showToolsModal, setShowToolsModal] = useState(false);
+      const [showExportModal, setShowExportModal] = useState(false);
+      const [pendingExportType, setPendingExportType] = useState(null);
+      const [teacherModeUnlocked, setTeacherModeUnlocked] = useState(false);
+
+      const [queue, setQueue] = useState([]); 
+      const [options, setOptions] = useState([]); 
+      const [feedback, setFeedback] = useState(null); 
+      const [typeInput, setTypeInput] = useState(''); 
+
+      const audioCtxRef = useRef(null);
+      const teacherTapCountRef = useRef(0);
+      const teacherTapTimeoutRef = useRef(null);
+
+      useEffect(() => {
+        const blockDefault = (event) => {
+          event.preventDefault();
+        };
+
+        const blockShortcut = (event) => {
+          const key = event.key.toLowerCase();
+          if ((event.ctrlKey || event.metaKey) && (key === 's' || key === 'c')) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        };
+
+        document.addEventListener('contextmenu', blockDefault, true);
+        document.addEventListener('copy', blockDefault, true);
+        window.addEventListener('keydown', blockShortcut, true);
+
+        return () => {
+          document.removeEventListener('contextmenu', blockDefault, true);
+          document.removeEventListener('copy', blockDefault, true);
+          window.removeEventListener('keydown', blockShortcut, true);
+        };
+      }, []);
+
+      useEffect(() => {
+        return () => {
+          if (teacherTapTimeoutRef.current) {
+            clearTimeout(teacherTapTimeoutRef.current);
+          }
+        };
+      }, []);
+
+      // 有効な単語のリスト
+      const validWords = useMemo(() => {
+        return wordList.filter(item => item.word.trim() !== '' && item.meaning.trim() !== '');
+      }, [wordList]);
+
+      useEffect(() => {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.getVoices();
+          window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+        }
+      }, []);
+
+      const initAudio = () => {
+        if (!audioCtxRef.current) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          audioCtxRef.current = new AudioContext();
+        }
+        if (audioCtxRef.current.state === 'suspended') {
+          audioCtxRef.current.resume();
+        }
+      };
+
+      // --- Setup Logic ---
+      const handleWordChange = (id, field, value) => {
+        setWordList(prev => prev.map(item => {
+          if (item.id === id) {
+            return { ...item, [field]: value };
+          }
+          return item;
+        }));
+      };
+
+      const addWordField = () => {
+        setWordList(prev => [...prev, createWordItem()]);
+      };
+
+      const removeWordField = (id) => {
+        setWordList(prev => ensureMinimumWordRows(prev.filter(item => item.id !== id)));
+      };
+
+      const handleImportFile = async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        try {
+          if (!window.XLSX) {
+            throw new Error('Spreadsheet import is not available right now.');
+          }
+
+          const buffer = await file.arrayBuffer();
+          const workbook = window.XLSX.read(buffer, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rows = window.XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false, defval: '' });
+          const importedPairs = extractWordMeaningPairs(rows);
+
+          if (importedPairs.length === 0) {
+            throw new Error('No complete word / meaning pairs were found. Use columns named "word" and "meaning", or place them in the first two columns.');
+          }
+
+          setWordList(ensureMinimumWordRows(importedPairs.map(item => createWordItem(item.word, item.meaning))));
+          setImportStatus({
+            type: 'success',
+            message: `Imported ${importedPairs.length} word / meaning pairs from ${file.name}.`
+          });
+        } catch (error) {
+          setImportStatus({
+            type: 'error',
+            message: error.message || 'Could not read that spreadsheet file.'
+          });
+        }
+
+        event.target.value = '';
+      };
+
+      const handleTeacherUnlockTap = () => {
+        if (teacherModeUnlocked) return;
+
+        teacherTapCountRef.current += 1;
+
+        if (teacherTapTimeoutRef.current) {
+          clearTimeout(teacherTapTimeoutRef.current);
+        }
+
+        teacherTapTimeoutRef.current = setTimeout(() => {
+          teacherTapCountRef.current = 0;
+        }, 1200);
+
+        if (teacherTapCountRef.current >= 7) {
+          teacherTapCountRef.current = 0;
+          clearTimeout(teacherTapTimeoutRef.current);
+          teacherTapTimeoutRef.current = null;
+          setTeacherModeUnlocked(true);
+        }
+      };
+
+      const openFlashcards = () => {
+        if (validWords.length === 0) return;
+        setFlashcardDeck([...validWords]);
+        setFlashcardIndex(0);
+        setShowFlashcardMeaning(false);
+        setGameState('flashcards');
+      };
+
+      const reshuffleFlashcards = () => {
+        if (validWords.length === 0) return;
+        setFlashcardDeck(shuffleArray([...validWords]));
+        setFlashcardIndex(0);
+        setShowFlashcardMeaning(false);
+      };
+
+      const goToFlashcard = (direction) => {
+        if (flashcardDeck.length === 0) return;
+        setFlashcardIndex(prev => (prev + direction + flashcardDeck.length) % flashcardDeck.length);
+        setShowFlashcardMeaning(false);
+      };
+
+      const downloadStudyPackHtml = (studentName = userName) => {
+        if (validWords.length === 0) return;
+        const safeStudentName = studentName.trim() || 'Student';
+        const filename = `${toFileSafeName(safeStudentName, 'student')}_flashcards.html`;
+        downloadHtmlFile(filename, buildStudyPackHtml(safeStudentName, validWords));
+      };
+
+      const startGame = () => {
+        initAudio();
+        setCurrentStep(1);
+        setGameState('transition');
+      };
+
+      const startCurrentStep = () => {
+        initAudio();
+        setQueue(shuffleArray(validWords));
+        setFeedback(null);
+        setTypeInput('');
+        setGameState(`step${currentStep}`);
+      };
+
+      const finishStep = () => {
+        if (currentStep === 1) {
+          setCurrentStep(2);
+          setGameState('transition');
+        } else if (currentStep === 2) {
+          setCurrentStep(3);
+          setGameState('transition');
+        } else {
+          setGameState('result');
+        }
+      };
+
+      // --- Step 1 & 2 Logic (Multiple Choice) ---
+      const currentTargetId = queue.length > 0 ? queue[0].id : null;
+
+      useEffect(() => {
+        if ((gameState === 'step1' || gameState === 'step2') && currentTargetId && feedback === null) {
+          const target = queue[0];
+          const others = validWords.filter(item => item.id !== target.id);
+          const shuffledOthers = shuffleArray(others);
+          const dummies = shuffledOthers.slice(0, 3);
+          setOptions(shuffleArray([target, ...dummies]));
+          
+          if (gameState === 'step1') {
+            setTimeout(() => speak(target.word), 300);
+          }
+        }
+      }, [gameState, currentTargetId, feedback, validWords]);
+
+      const handleMultipleChoice = (selectedItem) => {
+        if (feedback !== null || queue.length === 0) return;
+        const target = queue[0];
+        const isCorrect = selectedItem.id === target.id;
+
+        if (isCorrect) {
+          setFeedback('correct');
+          playSE(audioCtxRef.current, 'correct');
+          
+          if (gameState === 'step2') {
+             speak(target.word);
+          }
+
+          setTimeout(() => {
+            setFeedback(null);
+            const nextQueue = queue.slice(1);
+            if (nextQueue.length === 0) {
+               finishStep();
+            } else {
+               setQueue(nextQueue);
+            }
+          }, 1000);
+        } else {
+          setFeedback('incorrect');
+          playSE(audioCtxRef.current, 'incorrect');
+          setTimeout(() => {
+            setFeedback(null);
+            const newQueue = [...queue.slice(1), target];
+            setQueue(newQueue);
+          }, 1000);
+        }
+      };
+
+      // --- Step 3 Logic (Typing) ---
+      const handleTypingSubmit = (e) => {
+        e?.preventDefault();
+        if (feedback !== null || queue.length === 0 || typeInput.trim() === '') return;
+        const target = queue[0];
+        
+        // 柔軟な判定ロジック
+        // 1. 入力とターゲットを両方ローマ字に変換＆正規化して比較（ひらがな・ローマ字の相互判定、綴りの揺れ吸収）
+        const inputNorm = normalizeRomaji(toRomaji(typeInput));
+        const targetNorm = normalizeRomaji(toRomaji(target.word));
+        
+        // 2. 完全に一致するかどうか（漢字などで入力された場合のセーフティネット）
+        const exactMatch = normalizeString(typeInput) === normalizeString(target.word);
+        
+        const isCorrect = inputNorm === targetNorm || exactMatch;
+
+        if (isCorrect) {
+          setFeedback('correct');
+          playSE(audioCtxRef.current, 'correct');
+          speak(target.word);
+          setTimeout(() => {
+            setFeedback(null);
+            setTypeInput('');
+            const nextQueue = queue.slice(1);
+            if (nextQueue.length === 0) {
+               finishStep();
+            } else {
+               setQueue(nextQueue);
+            }
+          }, 1000);
+        } else {
+          setFeedback('incorrect');
+          playSE(audioCtxRef.current, 'incorrect');
+          setTimeout(() => {
+            setFeedback(null);
+            setTypeInput('');
+            const newQueue = [...queue.slice(1), target];
+            setQueue(newQueue);
+          }, 2500);
+        }
+      };
+
+      // --- Certificate Download ---
+      const downloadCertificate = (studentName = userName) => {
+        const safeStudentName = studentName.trim() || 'Student';
+        const canvas = document.createElement('canvas');
+        canvas.width = 1000;
+        canvas.height = Math.max(600, 450 + validWords.length * 40);
+        const ctx = canvas.getContext('2d');
+
+        // 背景
+        ctx.fillStyle = '#f8fafc'; 
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // ヘッダー背景
+        ctx.fillStyle = '#0f766e'; 
+        ctx.fillRect(0, 0, canvas.width, 180);
+
+        // 枠線
+        ctx.strokeStyle = '#14b8a6'; 
+        ctx.lineWidth = 10;
+        ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+
+        // タイトル
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 50px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Vocabulary Builder Certificate', canvas.width / 2, 80);
+
+        ctx.font = '30px sans-serif';
+        ctx.fillText('3-Step Mastery Completed', canvas.width / 2, 130);
+
+        // ユーザー名と日付
+        ctx.fillStyle = '#334155'; 
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 35px sans-serif';
+        ctx.fillText(`Student: ${safeStudentName}`, 60, 250);
+        
+        const date = new Date().toLocaleString();
+        ctx.fillStyle = '#64748b'; 
+        ctx.font = '24px sans-serif';
+        ctx.fillText(`Completed on: ${date}`, 60, 290);
+
+        // 宣言文
+        ctx.fillStyle = '#0f766e';
+        ctx.font = 'bold 28px sans-serif';
+        ctx.fillText('I hereby declare that I have mastered the following words:', 60, 360);
+
+        // 単語リストの描画
+        ctx.fillStyle = '#334155';
+        ctx.font = '28px sans-serif';
+        
+        // 2列で描画
+        const col1X = 80;
+        const col2X = 520;
+        let startY = 420;
+        const rowHeight = 40;
+
+        validWords.forEach((item, index) => {
+          const text = `${index + 1}. ${item.word} = ${item.meaning}`;
+          const x = (index % 2 === 0) ? col1X : col2X;
+          const y = startY + Math.floor(index / 2) * rowHeight;
+          ctx.fillText(text, x, y);
+        });
+
+        // ダウンロード
+        const url = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${safeStudentName}_VocabularyBuilder_Certificate.png`;
+        a.click();
+      };
+
+      const hasWordFormatWarnings = wordList.some(item => item.word.trim() !== '' && !isRecommendedWordFormat(item.word));
+      const flashcardTarget = flashcardDeck[flashcardIndex] || null;
+      const canOpenFlashcards = validWords.length > 0;
+      const canStartMastery = validWords.length >= 4;
+      const masteryBlockedReason = !canStartMastery
+        ? 'Add at least 4 complete word / meaning pairs before starting 3-Step Mastery.'
+        : null;
+
+      const closeExportModal = () => {
+        setShowExportModal(false);
+        setPendingExportType(null);
+      };
+
+      const openExportModal = (type) => {
+        if (validWords.length === 0) return;
+        setShowToolsModal(false);
+        setPendingExportType(type);
+        setShowExportModal(true);
+      };
+
+      const handleExportConfirm = (event) => {
+        event?.preventDefault();
+        const trimmedName = userName.trim();
+        if (!trimmedName || !pendingExportType) return;
+
+        if (pendingExportType === 'studyPack') {
+          downloadStudyPackHtml(trimmedName);
+        } else if (pendingExportType === 'certificate') {
+          downloadCertificate(trimmedName);
+        }
+
+        closeExportModal();
+      };
+
+      const renderToolsModal = () => {
+        if (!showToolsModal) return null;
+
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowToolsModal(false)}
+          >
+            <div
+              className="w-full max-w-lg bg-white rounded-3xl border border-slate-200 shadow-[0_25px_80px_rgba(15,23,42,0.18)] p-6 sm:p-7"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-black uppercase tracking-[0.25em] mb-3">
+                    <Icon name="Settings" size={14} /> Tools
+                  </div>
+                  <h2 className="text-2xl font-black text-slate-900 mb-1">Import Spreadsheet</h2>
+                  <p className="text-sm text-slate-500">
+                    Bring in word / meaning pairs from a spreadsheet. Export rewards unlock after 3-Step Mastery.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowToolsModal(false)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                >
+                  <Icon name="X" size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-slate-200 p-5 bg-slate-50">
+                  <h3 className="text-lg font-black text-slate-800 mb-2">Import Spreadsheet</h3>
+                  <p className="text-sm text-slate-500 leading-relaxed mb-4">
+                    Use <span className="font-bold text-slate-700">xlsx</span>, <span className="font-bold text-slate-700">xls</span>, or <span className="font-bold text-slate-700">csv</span>. Put <span className="font-bold text-slate-700">word</span> and <span className="font-bold text-slate-700">meaning</span> in columns, or use the first two columns.
+                  </p>
+                  <label className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-xl cursor-pointer transition active:scale-95">
+                    <Icon name="Upload" size={18} /> Import File
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handleImportFile}
+                      className="hidden"
+                    />
+                  </label>
+                  {importStatus && (
+                    <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-bold ${
+                      importStatus.type === 'success'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-rose-200 bg-rose-50 text-rose-700'
+                    }`}>
+                      {importStatus.message}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const renderExportModal = () => {
+        if (!showExportModal || !pendingExportType) return null;
+
+        const exportConfig = {
+          studyPack: {
+            title: 'Export Flashcards HTML',
+            description: 'Enter the student name to generate a flashcards file.'
+          },
+          certificate: {
+            title: 'Get Certificate',
+            description: 'Enter the student name to place it on the certificate.'
+          }
+        }[pendingExportType];
+
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={closeExportModal}
+          >
+            <div
+              className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-[0_25px_80px_rgba(15,23,42,0.18)] p-6 sm:p-7"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-black uppercase tracking-[0.25em] mb-3">
+                    <Icon name="Download" size={14} /> Export
+                  </div>
+                  <h2 className="text-2xl font-black text-slate-900 mb-1">{exportConfig.title}</h2>
+                  <p className="text-sm text-slate-500">{exportConfig.description}</p>
+                </div>
+                <button
+                  onClick={closeExportModal}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                >
+                  <Icon name="X" size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleExportConfirm} className="space-y-5">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Student Name</label>
+                  <input
+                    type="text"
+                    placeholder="Enter the student name"
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                    className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-400 font-bold text-slate-700 transition"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={closeExportModal}
+                    className="py-3 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold hover:bg-slate-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={userName.trim() === ''}
+                    className={`py-3 rounded-xl font-bold transition ${
+                      userName.trim() === ''
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'bg-slate-900 text-white hover:bg-slate-800 active:scale-95'
+                    }`}
+                  >
+                    Export
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      };
+
+      // --- Views ---
+      const renderIntroScreen = () => (
+        <div className="w-full h-full overflow-y-auto animate-in fade-in duration-500">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
+            <div className="bg-white rounded-[32px] border border-slate-200 shadow-[0_20px_60px_rgba(15,23,42,0.08)] overflow-hidden">
+              <div className="px-6 sm:px-10 py-10 sm:py-14 text-center bg-slate-50 border-b border-slate-200">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-100 text-teal-700 font-bold mb-6">
+                  <Icon name="BookOpen" size={18} /> Vocabulary Builder
+                </div>
+                <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-900 tracking-tight mb-4">
+                  Build vocabulary, then learn it step by step
+                </h1>
+                <p className="text-slate-500 text-base sm:text-lg max-w-2xl mx-auto leading-relaxed">
+                  Enter word and meaning pairs, review them with flashcards, and then finish with 3-Step Mastery.
+                </p>
+              </div>
+
+              <div className="px-6 sm:px-10 py-8 sm:py-10">
+                <div className="grid md:grid-cols-3 gap-4 mb-8">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 text-left">
+                    <div className="text-xs font-black uppercase tracking-[0.25em] text-slate-400 mb-2">Step 1</div>
+                    <div className="text-lg font-black text-slate-900 mb-2">Enter Words</div>
+                    <p className="text-sm text-slate-500">Use hiragana, katakana, or roman alphabet for the word, then add the meaning.</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 text-left">
+                    <div className="text-xs font-black uppercase tracking-[0.25em] text-slate-400 mb-2">Step 2</div>
+                    <div className="text-lg font-black text-slate-900 mb-2">Flashcards</div>
+                    <p className="text-sm text-slate-500">Flip through the cards and listen to the words before testing yourself.</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 text-left">
+                    <div className="text-xs font-black uppercase tracking-[0.25em] text-slate-400 mb-2">Step 3</div>
+                    <div className="text-lg font-black text-slate-900 mb-2">3-Step Mastery</div>
+                    <p className="text-sm text-slate-500">Move from listening to reading to typing until the whole set is mastered.</p>
+                  </div>
+                </div>
+
+                <div className="flex justify-center">
+                  <button
+                    onClick={() => setGameState('setup')}
+                    className="inline-flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-slate-900 text-white text-lg font-bold hover:bg-slate-800 active:scale-95 transition"
+                  >
+                    <Icon name="ArrowRight" size={22} /> Start Building
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      const renderSetupScreen = () => (
+        <div className="w-full h-full overflow-y-auto animate-in fade-in duration-500">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+            <div className="bg-white rounded-[32px] border border-slate-200 shadow-[0_20px_60px_rgba(15,23,42,0.08)] overflow-hidden">
+              <div className="px-6 sm:px-8 py-6 border-b border-slate-200 bg-slate-50">
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleTeacherUnlockTap}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-100 text-teal-700 text-sm font-bold mb-4"
+                  >
+                    <Icon name="BookOpen" size={16} /> Step 1 of 3
+                  </button>
+                  <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-2">
+                    Enter your vocabulary list
+                  </h1>
+                  <p className="text-slate-500 text-sm sm:text-base max-w-3xl">
+                    Add a word and its meaning.
+                  </p>
+                </div>
+              </div>
+
+              <div className="px-6 sm:px-8 py-6">
+                <div className="space-y-6">
+                  <section className="min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-5">
+                      <div>
+                        <h2 className="text-2xl font-black text-slate-900 mb-1">Word / Meaning Pairs</h2>
+                        {hasWordFormatWarnings && (
+                          <p className="text-sm font-bold text-rose-500">
+                            Some word entries should be cleaned up for best results.
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          onClick={() => setShowToolsModal(true)}
+                          className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold hover:bg-slate-100 transition"
+                        >
+                          <Icon name="Settings" size={18} /> Tools
+                        </button>
+                      </div>
+                    </div>
+
+                    {teacherModeUnlocked && (
+                      <div className="mb-4 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-black uppercase tracking-[0.25em] text-teal-700 mb-1">Teacher Shortcut</div>
+                          <div className="text-sm font-bold text-slate-700">
+                            Quick export is unlocked. You can generate the flashcards before 3-Step Mastery.
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => openExportModal('studyPack')}
+                          disabled={validWords.length === 0}
+                          className={`inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold transition ${
+                            validWords.length === 0
+                              ? 'bg-white border border-slate-200 text-slate-400 cursor-not-allowed'
+                              : 'bg-teal-500 text-white hover:bg-teal-400 active:scale-95'
+                          }`}
+                        >
+                          <Icon name="Download" size={18} /> Teacher Export
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="rounded-3xl border border-slate-200 overflow-hidden bg-white">
+                      <div className="hidden sm:grid sm:grid-cols-12 gap-4 px-5 py-4 bg-slate-50 border-b border-slate-200">
+                        <div className="sm:col-span-1 text-xs font-black uppercase tracking-[0.25em] text-slate-400">#</div>
+                        <div className="sm:col-span-5 text-xs font-black uppercase tracking-[0.25em] text-slate-400">Word</div>
+                        <div className="sm:col-span-5 text-xs font-black uppercase tracking-[0.25em] text-slate-400">Meaning</div>
+                        <div className="sm:col-span-1 text-xs font-black uppercase tracking-[0.25em] text-slate-400 text-right">Delete</div>
+                      </div>
+
+                      <div className="divide-y divide-slate-200">
+                        {wordList.map((item, index) => {
+                          const showWordWarning = item.word.trim() !== '' && !isRecommendedWordFormat(item.word);
+                          const samplePair = SAMPLE_VOCAB_PAIRS[index % SAMPLE_VOCAB_PAIRS.length];
+
+                          return (
+                            <div key={item.id} className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4 px-4 sm:px-5 py-4 items-start">
+                              <div className="sm:col-span-1 flex sm:items-center text-sm font-bold text-slate-400">
+                                {index + 1}
+                              </div>
+
+                              <div className="sm:col-span-5">
+                                <label className="sm:hidden text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-2 block">Word</label>
+                                <input
+                                  type="text"
+                                  placeholder={samplePair.word}
+                                  value={item.word}
+                                  onChange={(e) => handleWordChange(item.id, 'word', e.target.value)}
+                                  className={`w-full p-3.5 rounded-xl border focus:outline-none focus:border-teal-400 kyokasho-font text-lg transition ${
+                                    showWordWarning ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-200 bg-slate-50 text-slate-800'
+                                  }`}
+                                />
+                                {showWordWarning && (
+                                  <p className="text-xs font-bold text-rose-500 mt-2">Use hiragana, katakana, or roman alphabet.</p>
+                                )}
+                              </div>
+
+                              <div className="sm:col-span-5">
+                                <label className="sm:hidden text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-2 block">Meaning</label>
+                                <input
+                                  type="text"
+                                  placeholder={samplePair.meaning}
+                                  value={item.meaning}
+                                  onChange={(e) => handleWordChange(item.id, 'meaning', e.target.value)}
+                                  className="w-full p-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:border-teal-400 text-slate-700 transition"
+                                />
+                              </div>
+
+                              <div className="sm:col-span-1 flex sm:justify-end">
+                                {wordList.length > 4 && (
+                                  <button
+                                    onClick={() => removeWordField(item.id)}
+                                    className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                                  >
+                                    <Icon name="Trash2" size={18} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="px-4 sm:px-5 py-4 border-t border-slate-200 bg-slate-50 flex justify-start">
+                        <button
+                          onClick={addWordField}
+                          className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-700 font-bold hover:bg-slate-100 hover:border-teal-300 transition"
+                        >
+                          <Icon name="Plus" size={18} /> Add Row
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+
+                  <div className="rounded-3xl bg-slate-900 p-5 sm:p-6 text-white flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div>
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 text-slate-200 text-xs font-black uppercase tracking-[0.25em] mb-3">
+                        <Icon name="ArrowRight" size={14} /> Step 2 of 3
+                      </div>
+                      <h3 className="text-2xl font-black mb-1">Next: Flashcards</h3>
+                      <p className="text-sm text-slate-300">
+                        Review the words with flashcards first, then continue to 3-Step Mastery.
+                      </p>
+                    </div>
+                    <div className="w-full lg:w-auto">
+                      <button
+                        onClick={openFlashcards}
+                        disabled={!canOpenFlashcards}
+                        className={`w-full lg:min-w-[240px] py-4 text-lg font-bold rounded-xl transition-all flex items-center justify-center gap-3 ${
+                          !canOpenFlashcards
+                            ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                            : 'bg-teal-500 text-white hover:bg-teal-400 active:scale-95'
+                        }`}
+                      >
+                        <Icon name="BookOpen" size={22} /> Start Flashcards
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      const renderFlashcardsScreen = () => {
+        if (!flashcardTarget) return null;
+
+        return (
+          <div className="flex flex-col items-center max-w-5xl mx-auto w-full p-4 sm:p-6 animate-in fade-in duration-500 h-full overflow-y-auto">
+            <div className="w-full flex flex-wrap items-center justify-between gap-3 mb-6">
+              <button
+                onClick={() => setGameState('setup')}
+                className="flex items-center gap-2 text-slate-700 hover:text-slate-900 transition font-bold bg-white py-3 px-5 rounded-full border border-slate-200 shadow-sm"
+              >
+                <Icon name="ArrowLeft" size={20} /> Back to Builder
+              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="bg-white px-4 py-2 rounded-full border border-slate-200 text-slate-600 font-bold">
+                  Card {flashcardIndex + 1} / {flashcardDeck.length}
+                </div>
+                <button
+                  onClick={reshuffleFlashcards}
+                  className="flex items-center gap-2 bg-white px-4 py-2 rounded-full border border-slate-200 text-slate-700 font-bold hover:border-teal-300 hover:text-teal-600 transition"
+                >
+                  <Icon name="RotateCcw" size={18} /> Shuffle
+                </button>
+              </div>
+            </div>
+
+            <div className="w-full grid lg:grid-cols-[minmax(0,1.2fr)_320px] gap-6 items-stretch">
+              <button
+                onClick={() => setShowFlashcardMeaning(prev => !prev)}
+                className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-8 min-h-[460px] flex flex-col items-center justify-center text-center hover:border-teal-300 transition"
+              >
+                <p className="text-xs font-black uppercase tracking-[0.35em] text-teal-600 mb-4">
+                  {showFlashcardMeaning ? 'Meaning' : 'Word'}
+                </p>
+                <div className={`text-4xl sm:text-6xl font-black break-words leading-tight ${showFlashcardMeaning ? 'text-slate-800' : 'text-teal-600 kyokasho-font'}`}>
+                  {showFlashcardMeaning ? flashcardTarget.meaning : flashcardTarget.word}
+                </div>
+                <p className="mt-8 text-slate-400 font-bold">Tap to flip the card</p>
+              </button>
+
+              <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-6 flex flex-col gap-4">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-100 text-teal-700 text-xs font-black uppercase tracking-[0.25em] self-start">
+                  <Icon name="BookOpen" size={14} /> Step 2 of 3
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-400 mb-2">Current Card</p>
+                  <h2 className="text-2xl font-black text-slate-800">{flashcardTarget.word}</h2>
+                  <p className="text-slate-500 mt-2">{flashcardTarget.meaning}</p>
+                </div>
+
+                <button
+                  onClick={() => speak(flashcardTarget.word)}
+                  className="w-full py-3 rounded-xl font-bold bg-cyan-500 text-slate-950 hover:bg-cyan-400 active:scale-95 transition flex items-center justify-center gap-2"
+                >
+                  <Icon name="Volume2" size={20} /> Listen to Word
+                </button>
+
+                <button
+                  onClick={() => setShowFlashcardMeaning(prev => !prev)}
+                  className="w-full py-3 rounded-xl font-bold bg-slate-800 text-white hover:bg-slate-700 active:scale-95 transition flex items-center justify-center gap-2"
+                >
+                  <Icon name="Eye" size={20} /> {showFlashcardMeaning ? 'Show Word' : 'Show Meaning'}
+                </button>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => goToFlashcard(-1)}
+                    className="py-3 rounded-xl font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 active:scale-95 transition flex items-center justify-center gap-2"
+                  >
+                    <Icon name="ArrowLeft" size={18} /> Prev
+                  </button>
+                  <button
+                    onClick={() => goToFlashcard(1)}
+                    className="py-3 rounded-xl font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 active:scale-95 transition flex items-center justify-center gap-2"
+                  >
+                    Next <Icon name="ArrowRight" size={18} />
+                  </button>
+                </div>
+
+                <div className="border-t border-slate-200 pt-4 space-y-3">
+                  <button
+                    onClick={startGame}
+                    disabled={!canStartMastery}
+                    className={`w-full py-3 rounded-xl font-bold transition flex items-center justify-center gap-2 ${
+                      !canStartMastery
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'bg-slate-900 text-white hover:bg-slate-800 active:scale-95'
+                    }`}
+                  >
+                    <Icon name="ArrowRight" size={18} /> Continue to 3-Step Mastery
+                  </button>
+                  {masteryBlockedReason && (
+                    <p className="text-sm text-rose-500 font-bold">{masteryBlockedReason}</p>
+                  )}
+                  <button
+                    onClick={() => setGameState('setup')}
+                    className="w-full py-3 rounded-xl font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 active:scale-95 transition flex items-center justify-center gap-2"
+                  >
+                    <Icon name="ArrowLeft" size={18} /> Back to Word List
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const renderTransitionScreen = () => {
+        const stepInfo = {
+          1: { title: "Step 1: Listening", icon: "Ear", desc: "Listen to the word and choose the correct meaning.", color: "text-blue-500" },
+          2: { title: "Step 2: Recall", icon: "Eye", desc: "Look at the meaning and choose the correct word.", color: "text-purple-500" },
+          3: { title: "Step 3: Typing", icon: "Keyboard", desc: "Look at the meaning and type the word.", color: "text-rose-500" }
+        };
+        const info = stepInfo[currentStep];
+
+        return (
+          <div className="flex flex-col items-center justify-center h-full p-6 text-center animate-in zoom-in duration-500 w-full max-w-2xl mx-auto">
+            <div className="bg-white w-full rounded-3xl shadow-2xl border border-slate-100 p-10 flex flex-col items-center">
+              <div className={`p-6 rounded-full bg-slate-50 mb-6 border-4 border-slate-100 ${info.color}`}>
+                 <Icon name={info.icon} size={80} />
+              </div>
+              <h2 className={`text-4xl sm:text-5xl font-extrabold mb-4 ${info.color}`}>{info.title}</h2>
+              <p className="text-xl text-slate-500 font-bold mb-10">{info.desc}</p>
+              
+              <div className="bg-slate-100 text-slate-600 px-6 py-3 rounded-full font-bold mb-8 flex items-center gap-2">
+                 <Icon name="Target" size={20} /> Goal: Answer all {validWords.length} words correctly!
+              </div>
+
+              <button 
+                onClick={startCurrentStep}
+                className="w-full py-5 text-2xl font-black rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-all transform active:scale-95 shadow-xl flex items-center justify-center gap-3"
+              >
+                Let's Go! <Icon name="ArrowRight" size={28} />
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      const renderStep12Screen = () => {
+        const target = queue[0];
+        if (!target) return null;
+
+        const isStep1 = gameState === 'step1';
+
+        return (
+          <div className="flex flex-col items-center justify-center h-full max-w-3xl mx-auto w-full p-4 sm:p-6 animate-in fade-in duration-300">
+            <div className="w-full flex justify-between items-center mb-6 px-4 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+              <div className="flex items-center gap-3">
+                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${isStep1 ? 'bg-blue-500' : 'bg-purple-500'}`}>
+                    {currentStep}
+                 </div>
+                 <span className="font-bold text-slate-700 text-lg hidden sm:block">
+                   {isStep1 ? 'Listening' : 'Recall'}
+                 </span>
+              </div>
+              <div className="flex items-center gap-3 font-bold bg-slate-100 px-4 py-2 rounded-full text-slate-600 border border-slate-200">
+                <Icon name="ListTodo" size={20} /> {validWords.length - queue.length + 1} / {validWords.length}
+              </div>
+            </div>
+
+            <div className={`bg-white w-full rounded-3xl shadow-2xl border-b-8 p-8 text-center relative overflow-hidden flex flex-col items-center min-h-[450px]
+                 ${isStep1 ? 'border-blue-500' : 'border-purple-500'}`}>
+              
+              <p className="text-slate-400 font-bold tracking-widest uppercase mb-6 text-sm">
+                {isStep1 ? 'What does this mean?' : 'Choose the correct word'}
+              </p>
+              
+              <div className="flex-1 flex flex-col items-center justify-center w-full mb-8">
+                {isStep1 ? (
+                  <button 
+                    onClick={() => speak(target.word)}
+                    className="p-8 bg-blue-50 hover:bg-blue-100 rounded-full text-blue-500 transition active:scale-90 border-4 border-blue-200 shadow-inner group"
+                  >
+                    <Icon name="Volume2" size={80} className="group-hover:scale-110 transition-transform" />
+                  </button>
+                ) : (
+                  <h2 className="text-4xl sm:text-6xl font-black text-slate-800 break-words leading-tight px-4 bg-slate-50 w-full py-12 rounded-3xl border border-slate-100 shadow-inner">
+                    {target.meaning}
+                  </h2>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full mt-auto">
+                {options.map((opt, index) => {
+                  const isSelected = feedback !== null;
+                  const isTarget = opt.id === target.id;
+                  
+                  let btnClass = "bg-white border-2 border-slate-200 text-slate-700 hover:border-slate-400 hover:bg-slate-50";
+                  if (isSelected) {
+                    if (isTarget) btnClass = "bg-green-100 border-2 border-green-500 text-green-700 z-10 shadow-lg";
+                    else btnClass = "bg-slate-50 border-2 border-slate-200 text-slate-300 opacity-50";
+                  }
+
+                  const displayValue = isStep1 ? opt.meaning : opt.word;
+
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleMultipleChoice(opt)}
+                      disabled={isSelected}
+                      className={`relative py-6 px-4 rounded-2xl font-bold text-2xl sm:text-3xl shadow-sm transition transform active:scale-95 flex items-center justify-center break-words kyokasho-font
+                        ${btnClass}`}
+                    >
+                      <div className="absolute top-2 left-3 text-sm font-bold text-slate-400 font-sans opacity-50">
+                        {['A', 'B', 'C', 'D'][index]}
+                      </div>
+                      {displayValue}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {feedback === 'correct' && (
+                <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none animate-in zoom-in duration-300 bg-white/50 backdrop-blur-sm">
+                  <Icon name="CheckCircle" size={160} className="text-green-500 drop-shadow-2xl bg-white rounded-full" />
+                </div>
+              )}
+              {feedback === 'incorrect' && (
+                <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none animate-in zoom-in duration-300 bg-white/50 backdrop-blur-sm">
+                  <Icon name="XCircle" size={160} className="text-red-500 drop-shadow-2xl bg-white rounded-full" />
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      const renderStep3Screen = () => {
+        const target = queue[0];
+        if (!target) return null;
+
+        return (
+          <div className="flex flex-col items-center justify-center h-full max-w-3xl mx-auto w-full p-4 sm:p-6 animate-in fade-in duration-300">
+            <div className="w-full flex justify-between items-center mb-6 px-4 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+              <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold bg-rose-500">3</div>
+                 <span className="font-bold text-slate-700 text-lg hidden sm:block">Typing</span>
+              </div>
+              <div className="flex items-center gap-3 font-bold bg-slate-100 px-4 py-2 rounded-full text-slate-600 border border-slate-200">
+                <Icon name="ListTodo" size={20} /> {validWords.length - queue.length + 1} / {validWords.length}
+              </div>
+            </div>
+
+            <div className={`bg-white w-full rounded-3xl shadow-2xl border-b-8 border-rose-500 p-6 sm:p-10 text-center relative overflow-hidden flex flex-col items-center min-h-[450px]`}>
+              
+              <p className="text-slate-400 font-bold tracking-widest uppercase mb-6 text-sm">
+                Type the Word (Romaji, Hiragana, or Katakana)
+              </p>
+              
+              <div className="w-full bg-slate-50 border border-slate-100 rounded-3xl py-10 px-4 mb-8 shadow-inner flex flex-col items-center justify-center flex-1">
+                <h2 className="text-4xl sm:text-5xl font-black text-slate-800 break-words mb-2">
+                  {target.meaning}
+                </h2>
+              </div>
+
+              <form onSubmit={handleTypingSubmit} className="w-full max-w-md mx-auto">
+                <input 
+                   type="text"
+                   autoFocus
+                   disabled={feedback !== null}
+                   placeholder="Type here..."
+                   value={typeInput}
+                   onChange={(e) => setTypeInput(e.target.value)}
+                   className={`w-full text-center text-3xl kyokasho-font p-6 bg-slate-100 border-4 rounded-2xl focus:outline-none transition-all shadow-inner
+                     ${feedback === null ? 'border-slate-300 focus:border-rose-400 text-slate-800' : 
+                       feedback === 'correct' ? 'border-green-500 text-green-700 bg-green-50' : 'border-red-500 text-red-700 bg-red-50'}`}
+                />
+                
+                <button 
+                  type="submit"
+                  disabled={feedback !== null || typeInput.trim() === ''}
+                  className="w-full mt-4 py-4 text-xl font-bold rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-all transform active:scale-95 disabled:opacity-50 disabled:active:scale-100 shadow-lg flex items-center justify-center gap-2"
+                >
+                  <Icon name="Send" size={24} /> Submit Answer
+                </button>
+              </form>
+
+              {feedback === 'incorrect' && (
+                <div className="absolute top-[60%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-11/12 bg-white border-4 border-red-500 p-6 rounded-3xl shadow-2xl z-30 animate-in zoom-in spin-in-2 flex flex-col items-center">
+                  <Icon name="XCircle" size={60} className="text-red-500 mb-2" />
+                  <p className="text-slate-500 font-bold uppercase tracking-widest text-sm mb-1">Correct Answer</p>
+                  <p className="text-4xl font-black text-slate-800 kyokasho-font">{target.word}</p>
+                </div>
+              )}
+              
+              {feedback === 'correct' && (
+                <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none animate-in zoom-in duration-300 bg-white/50 backdrop-blur-sm">
+                  <Icon name="CheckCircle" size={160} className="text-green-500 drop-shadow-2xl bg-white rounded-full" />
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      const renderResultScreen = () => {
+        return (
+          <div className="flex flex-col items-center justify-center h-full max-w-2xl mx-auto w-full p-4 sm:p-6 animate-in zoom-in duration-500">
+            <div className="bg-white w-full rounded-3xl shadow-2xl border border-slate-200 p-8 sm:p-10 text-center">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-100 text-teal-700 font-bold mb-6">
+                <Icon name="Award" size={18} /> 3-Step Mastery Complete
+              </div>
+
+              <h2 className="text-4xl md:text-5xl font-black text-slate-900 mb-3 tracking-tight">Mastery achieved</h2>
+              <p className="text-lg md:text-xl text-slate-500 font-bold mb-8">
+                You completed all {validWords.length} vocabulary pairs. Your rewards are ready below.
+              </p>
+              
+              <div className="grid sm:grid-cols-2 gap-4 mb-8">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                  <div className="text-xs font-black uppercase tracking-[0.25em] text-slate-400 mb-2">Mastered</div>
+                  <div className="text-5xl font-black text-slate-900">{validWords.length}</div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                  <div className="text-xs font-black uppercase tracking-[0.25em] text-slate-400 mb-2">Rewards</div>
+                  <div className="text-2xl font-black text-slate-900 break-words">Certificate + Flashcards</div>
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4 mb-4">
+                <button 
+                  onClick={() => openExportModal('certificate')}
+                  className="flex-1 py-5 text-lg font-black rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-all transform active:scale-95 shadow-xl flex items-center justify-center gap-3"
+                >
+                  <Icon name="Award" size={24} /> Get Certificate
+                </button>
+                <button
+                  onClick={() => openExportModal('studyPack')}
+                  className="flex-1 py-5 text-lg font-black rounded-xl bg-teal-500 text-white hover:bg-teal-400 transition-all transform active:scale-95 shadow-xl flex items-center justify-center gap-3"
+                >
+                  <Icon name="Download" size={24} /> Export Flashcards HTML
+                </button>
+              </div>
+
+              <div>
+                <button 
+                  onClick={() => setGameState('setup')}
+                  className="w-full py-5 text-lg font-bold rounded-xl bg-white border-4 border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all transform active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <Icon name="Home" size={24} /> Edit List
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      };
+
+      return (
+        <div className="h-screen bg-slate-100 font-sans overflow-hidden select-none touch-none flex flex-col">
+          <style dangerouslySetInnerHTML={{__html: `
+            @import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap');
+            .kyokasho-font { font-family: 'Klee One', serif; }
+          `}} />
+          
+          {gameState === 'intro' && renderIntroScreen()}
+          {gameState === 'setup' && renderSetupScreen()}
+          {gameState === 'flashcards' && renderFlashcardsScreen()}
+          {gameState === 'transition' && renderTransitionScreen()}
+          {(gameState === 'step1' || gameState === 'step2') && renderStep12Screen()}
+          {gameState === 'step3' && renderStep3Screen()}
+          {gameState === 'result' && renderResultScreen()}
+          {renderToolsModal()}
+          {renderExportModal()}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
